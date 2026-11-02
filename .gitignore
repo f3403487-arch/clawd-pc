@@ -1,0 +1,8 @@
+# личные настройки и ключ ИИ
+clawd_pc.json
+clawd_pc.tmp
+sender_config.json
+photosync_config.json
+
+__pycache__/
+*.pyc

@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clawd</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  /* Clawd Pixel: тёплая тёмная тема, углы «лесенкой», жёсткие тени, акцент — цвет самого Clawd */
+  :root {
+    --bg: #15110e; --cell: #211b17; --cell2: #2b231e; --hover: #2a221d; --text: #f6ede4; --sub: #9b8a7c;
+    --accent: #f0a07a; --accent2: #d97757; --line: #3d312a; --shadow: #0a0807; --red: #c94a3f; --green: #8fcf6a;
+    --me: #3a2a21; --him: #211b17;
+    --px: polygon(6px 0, calc(100% - 6px) 0, calc(100% - 6px) 3px, calc(100% - 3px) 3px, calc(100% - 3px) 6px,
+      100% 6px, 100% calc(100% - 6px), calc(100% - 3px) calc(100% - 6px), calc(100% - 3px) calc(100% - 3px),
+      calc(100% - 6px) calc(100% - 3px), calc(100% - 6px) 100%, 6px 100%, 6px calc(100% - 3px), 3px calc(100% - 3px),
+      3px calc(100% - 6px), 0 calc(100% - 6px), 0 6px, 3px 6px, 3px 3px, 6px 3px);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); font: 15px/1.45 "Segoe UI", system-ui, sans-serif; height: 100%; }
+  body { display: flex; flex-direction: column; overflow: hidden;
+         background-image: radial-gradient(rgba(240,160,122,.05) 1px, transparent 1px); background-size: 12px 12px; }
+  .pixfont { font-family: "Pixelify Sans", "Segoe UI", sans-serif; }
+  ::-webkit-scrollbar { width: 10px; } ::-webkit-scrollbar-thumb { background: var(--line); }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+
+  .hero { position: relative; padding: 20px 20px 18px; display: flex; align-items: center; gap: 18px; flex-shrink: 0;
+          background: linear-gradient(180deg, #2a1e18 0%, var(--cell) 100%); border-bottom: 3px solid var(--line); }
+  .hero canvas { image-rendering: pixelated; cursor: pointer; flex-shrink: 0; }
+  .hero h1 { font-family: "Pixelify Sans", "Segoe UI", sans-serif; font-size: 30px; font-weight: 700; letter-spacing: 1px;
+             color: var(--accent); text-shadow: 3px 3px 0 var(--shadow); line-height: 1.1; }
+  .status { color: var(--sub); font-size: 13.5px; margin-top: 4px; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 8px; height: 8px; background: var(--green); box-shadow: 0 0 0 2px #1d2a15; animation: blink 1.6s steps(2) infinite; }
+  .dot.off { background: #e0b35f; box-shadow: 0 0 0 2px #3a2c12; }
+  @keyframes blink { 50% { opacity: .35; } }
+  .chips { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .chip { background: var(--cell2); color: var(--accent); border: 0; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer;
+          clip-path: var(--px); box-shadow: inset 0 0 0 2px var(--line); transition: background .1s, transform .05s; }
+  .chip:hover { background: #3a2e27; } .chip:active { transform: translate(1px, 1px); }
+
+  .tabs { display: flex; gap: 6px; padding: 10px 12px; background: var(--cell); border-bottom: 3px solid var(--line); flex-shrink: 0; }
+  .tab { flex: 1; text-align: center; padding: 8px 0; color: var(--sub); font-weight: 700; font-size: 13.5px; cursor: pointer;
+         user-select: none; clip-path: var(--px); transition: background .1s, color .1s; letter-spacing: .3px; }
+  .tab:hover { background: var(--cell2); color: var(--text); }
+  .tab.on { background: var(--accent2); color: #1a0f0a; }
+  .ink { display: none; }
+
+  .pages { flex: 1; overflow: clip; position: relative; }
+  .page { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; padding: 0 14px 24px; opacity: 0;
+          transform: translateY(8px); pointer-events: none; transition: opacity .15s, transform .2s steps(4); }
+  .page.on { opacity: 1; transform: none; pointer-events: auto; }
+  .instant .page, .instant .ink { transition: none; }
+
+  .header { font-family: "Pixelify Sans", "Segoe UI", sans-serif; color: var(--accent); font-weight: 700; font-size: 15px;
+            letter-spacing: 1px; text-transform: uppercase; padding: 18px 4px 8px; display: flex; align-items: center; gap: 8px; }
+  .header::before { content: ""; width: 8px; height: 8px; background: var(--accent2); box-shadow: 2px 2px 0 var(--shadow); }
+  .group { background: var(--cell); clip-path: var(--px); box-shadow: inset 0 0 0 2px var(--line); padding: 2px;
+           filter: drop-shadow(4px 4px 0 var(--shadow)); }
+  .row { display: flex; align-items: center; gap: 14px; padding: 11px 16px; cursor: pointer; transition: background .1s; position: relative; }
+  .row:hover { background: var(--hover); }
+  .row + .row::before { content: ""; position: absolute; top: 0; left: 16px; right: 16px; border-top: 2px dashed var(--line); }
+  .ico { width: 26px; text-align: center; font-size: 18px; flex-shrink: 0; }
+  .txt { flex: 1; min-width: 0; }
+  .ttl { font-size: 15px; font-weight: 600; }
+  .sub { color: var(--sub); font-size: 12.5px; margin-top: 1px; }
+  .note { color: var(--sub); font-size: 12.5px; padding: 12px 4px 2px; line-height: 1.5; }
+
+  /* переключатель — пиксельный «рычажок» */
+  .sw { width: 40px; height: 20px; background: var(--bg); position: relative; flex-shrink: 0; box-shadow: inset 0 0 0 2px var(--line); }
+  .sw::after { content: ""; position: absolute; top: 4px; left: 4px; width: 12px; height: 12px; background: var(--sub);
+               transition: transform .12s steps(3), background .1s; }
+  .sw.on { background: #3b2419; box-shadow: inset 0 0 0 2px var(--accent2); }
+  .sw.on::after { transform: translateX(20px); background: var(--accent); }
+
+  .colors { display: flex; gap: 12px; padding: 14px 14px; flex-wrap: wrap; }
+  .color { width: 44px; height: 44px; cursor: pointer; position: relative; border: 0; clip-path: var(--px); transition: transform .08s; }
+  .color:hover { transform: translateY(-2px); }
+  .color.on { box-shadow: inset 0 0 0 3px var(--text); }
+  .color span { position: absolute; inset: 0; }
+  .color span::before, .color span::after { content: ""; position: absolute; top: 14px; width: 5px; height: 10px; background: var(--eye); }
+  .color span::before { left: 13px; } .color span::after { right: 13px; }
+
+  .seg { display: flex; gap: 6px; padding: 10px; }
+  .seg button { flex: 1; border: 0; background: var(--bg); color: var(--sub); font: inherit; font-size: 13.5px; font-weight: 700;
+                padding: 9px 4px; cursor: pointer; clip-path: var(--px); box-shadow: inset 0 0 0 2px var(--line); }
+  .seg button:hover { color: var(--text); }
+  .seg button.on { background: var(--accent2); color: #1a0f0a; box-shadow: none; }
+
+  .field { padding: 10px 14px; }
+  .field label { display: block; color: var(--sub); font-size: 12.5px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+  .field input, .field textarea { width: 100%; background: var(--bg); border: 0; color: var(--text); font: inherit;
+               padding: 11px 13px; outline: none; resize: vertical; clip-path: var(--px); box-shadow: inset 0 0 0 2px var(--line); }
+  .field input:focus, .field textarea:focus { box-shadow: inset 0 0 0 2px var(--accent2); }
+  .btn { display: inline-flex; align-items: center; gap: 8px; border: 0; background: var(--accent2); color: #1a0f0a; font: inherit;
+         font-weight: 800; padding: 10px 18px; cursor: pointer; clip-path: var(--px); letter-spacing: .3px;
+         filter: drop-shadow(3px 3px 0 var(--shadow)); transition: transform .05s, background .1s; }
+  .btn:hover { background: var(--accent); } .btn:active { transform: translate(2px, 2px); filter: none; }
+  .btn.ghost { background: var(--cell2); color: var(--accent); box-shadow: inset 0 0 0 2px var(--line); }
+  .actions { display: flex; gap: 12px; padding: 12px 14px; flex-wrap: wrap; align-items: center; }
+  .result { color: var(--sub); font-size: 13.5px; }
+  .result.ok { color: var(--green); } .result.bad { color: #ff7a6e; }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat { background: var(--cell); padding: 16px 10px; text-align: center; clip-path: var(--px); box-shadow: inset 0 0 0 2px var(--line); }
+  .stat b { display: block; font-family: "Pixelify Sans", "Segoe UI", sans-serif; font-size: 30px; color: var(--accent);
+            text-shadow: 2px 2px 0 var(--shadow); }
+  .stat span { color: var(--sub); font-size: 12px; }
+
+  /* чат «Попросить» */
+  #chatPage { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+  .chat { flex: 1; overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 82%; padding: 8px 13px 9px; font-size: 14.5px; white-space: pre-wrap; word-wrap: break-word;
+         clip-path: var(--px); animation: pop .25s steps(4); }
+  .msg.me { align-self: flex-end; background: var(--accent2); color: #1a0f0a; font-weight: 600; }
+  .msg.him { align-self: flex-start; background: var(--him); box-shadow: inset 0 0 0 2px var(--accent2); }
+  .msg.typing { color: var(--sub); box-shadow: inset 0 0 0 2px var(--line); }
+  .msg .yn { display: flex; gap: 8px; margin-top: 10px; }
+  .msg .yn button { flex: 1; border: 0; padding: 8px; font: inherit; font-weight: 800; cursor: pointer; clip-path: var(--px); }
+  .msg .yn .no { background: var(--cell2); color: var(--text); box-shadow: inset 0 0 0 2px var(--line); }
+  .msg .yn .yes { background: var(--red); color: var(--text); }
+  @keyframes pop { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .suggest { display: flex; gap: 8px; padding: 8px 14px 4px; overflow-x: auto; flex-shrink: 0; }
+  .suggest .chip { white-space: nowrap; }
+  .composer { display: flex; gap: 10px; padding: 10px 14px 14px; flex-shrink: 0; align-items: center; }
+  .composer input { flex: 1; background: var(--cell); border: 0; outline: none; color: var(--text); font: inherit; font-size: 15px;
+                    padding: 12px 14px; clip-path: var(--px); box-shadow: inset 0 0 0 2px var(--line); }
+  .composer input:focus { box-shadow: inset 0 0 0 2px var(--accent2); }
+  .send { width: 46px; height: 46px; border: 0; background: var(--accent2); color: #1a0f0a; font-size: 18px; font-weight: 900;
+          cursor: pointer; clip-path: var(--px); flex-shrink: 0; transition: transform .05s, background .1s; }
+  .send:hover { background: var(--accent); } .send:active { transform: translate(2px, 2px); }
+
+  .seg.accs { flex-wrap: wrap; }
+  .seg.accs button { flex: 0 0 auto; padding: 8px 12px; }
+  .color.locked { filter: grayscale(.7) brightness(.55); cursor: not-allowed; }
+  .color i { position: absolute; inset: 0; display: grid; place-items: center; font-style: normal; font-size: 16px; }
+  .achcount { margin-left: auto; color: var(--sub); font-size: 13px; letter-spacing: 0; }
+  .achs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .ach { display: flex; gap: 10px; align-items: flex-start; padding: 12px; background: var(--cell); clip-path: var(--px);
+         box-shadow: inset 0 0 0 2px var(--line); opacity: .7; }
+  .ach.done { opacity: 1; box-shadow: inset 0 0 0 2px var(--accent2); background: #2b1f19; }
+  .achico { font-size: 22px; width: 30px; text-align: center; flex-shrink: 0; }
+  .ach.done .achico { animation: shine 2.4s steps(2) infinite; }
+  @keyframes shine { 50% { transform: translateY(-2px); } }
+  .achtxt { flex: 1; min-width: 0; }
+  .ach .ttl { font-size: 14px; } .ach .sub { font-size: 11.5px; }
+  .bar { height: 6px; margin-top: 7px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); }
+  .bar i { display: block; height: 100%; background: var(--accent2); }
+  .ach.done .bar { display: none; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); background: var(--cell); color: var(--text);
+           padding: 10px 16px; font-size: 14px; font-weight: 600; opacity: 0; transition: opacity .15s, transform .2s steps(3);
+           pointer-events: none; clip-path: var(--px); box-shadow: inset 0 0 0 2px var(--accent2); }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+  <div class="hero">
+    <canvas id="pet" width="132" height="110" title="Погладь меня"></canvas>
+    <div>
+      <h1>Clawd</h1>
+      <div class="status"><span class="dot" id="dot"></span><span id="status">на связи</span></div>
+      <div class="chips">
+        <button class="chip" data-act="center">📍 Позвать</button>
+        <button class="chip" data-act="sleep">😴 Уложить</button>
+        <button class="chip" data-act="portal">🌀 Портал</button>
+        <button class="chip" data-act="poop">💩</button>
+        <button class="chip" data-act="day">📊 Итоги</button>
+        <button class="chip" data-act="region">✂️ Объясни</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <div class="tab on" data-page="petPage">Питомец</div>
+    <div class="tab" data-page="chatPage">Попросить</div>
+    <div class="tab" data-page="aiPage">ИИ</div>
+    <div class="tab" data-page="aboutPage">О Клодике</div>
+    <div class="ink" id="ink"></div>
+  </div>
+
+  <div class="pages">
+    <!-- Питомец -->
+    <div class="page on" id="petPage">
+      <div class="header">Окрас</div>
+      <div class="group"><div class="colors" id="colors"></div></div>
+      <div class="header">Размер</div>
+      <div class="group"><div class="seg" id="size">
+        <button data-v="0">Маленький</button><button data-v="1">Обычный</button><button data-v="2">Большой</button>
+      </div></div>
+      <div class="header">Аксессуар</div>
+      <div class="group"><div class="seg accs" id="accs"></div></div>
+      <div class="header">Погода</div>
+      <div class="group">
+        <div class="field"><label>Город <span id="wNow"></span></label>
+          <input id="city" placeholder="например: Москва — дождь даст зонтик, снег шарф"></div>
+        <div class="actions"><button class="btn" id="saveCity">Сохранить</button></div>
+      </div>
+      <div class="header">Поведение</div>
+      <div class="group" id="behavior"></div>
+      <div class="header">Экран</div>
+      <div class="group" id="screen"></div>
+      <div class="note">Названия окон и мышка остаются на компьютере. Наружу уходят только кадры видео для «Смотрит видео вместе с тобой» — и только когда открыт YouTube, кино или шортсы.</div>
+    </div>
+
+    <!-- Попросить -->
+    <div class="page" id="chatPage">
+      <div class="chat" id="chat"></div>
+      <div class="suggest" id="suggest"></div>
+      <div class="composer">
+        <input id="ask" placeholder="Попроси что-нибудь… например: закрой все вкладки в фаерфоксе" autocomplete="off">
+        <button class="send" id="sendBtn" title="Отправить">➤</button>
+      </div>
+    </div>
+
+    <!-- ИИ -->
+    <div class="page" id="aiPage">
+      <div class="header">Провайдер</div>
+      <div class="group"><div class="seg" id="provider"></div></div>
+      <div class="group">
+        <div class="field"><label>API-ключ <span id="keyState"></span></label>
+          <input id="key" type="password" placeholder="вставь ключ и нажми «Сохранить»" autocomplete="off"></div>
+        <div class="field"><label>Модель</label><input id="model" placeholder=""></div>
+        <div class="field" id="urlField"><label>Адрес API (для OpenAI-совместимых)</label>
+          <input id="url" placeholder="https://api.openai.com/v1 — или например https://openrouter.ai/api/v1"></div>
+        <div class="actions">
+          <button class="btn" id="saveAi">Сохранить</button>
+          <button class="btn ghost" id="testAi">Проверить</button>
+          <span class="result" id="aiResult"></span>
+        </div>
+      </div>
+      <div class="note" id="keyHelp"></div>
+      <div class="header">О тебе</div>
+      <div class="group">
+        <div class="field"><label>Как тебя зовут</label><input id="name" placeholder="Клодик будет обращаться по имени"></div>
+        <div class="field"><label>Расскажи о себе</label>
+          <textarea id="about" rows="3" placeholder="Например: учусь на программиста, играю в доту, ложусь поздно"></textarea></div>
+        <div class="actions"><button class="btn" id="saveMe">Сохранить</button><span class="result" id="meResult"></span></div>
+      </div>
+      <div class="note">С ключом Клодик понимает любые просьбы: ИИ получает твой текст и список открытых программ. Простые команды («закрой фаерфокс», «громче») работают и без ИИ. Ключ хранится только на этом компьютере в clawd_pc.json.</div>
+    </div>
+
+    <!-- О Клодике -->
+    <div class="page" id="aboutPage">
+      <div class="header">Статистика</div>
+      <div class="stats">
+        <div class="stat"><b id="sPets">0</b><span>погладили</span></div>
+        <div class="stat"><b id="sAsks">0</b><span>просьб</span></div>
+        <div class="stat"><b id="sDays">1</b><span>дней вместе</span></div>
+      </div>
+      <div class="header">Ачивки <span class="achcount" id="achCount"></span></div>
+      <div class="achs" id="achs"></div>
+      <div class="header">Телефон <span class="achcount" id="phoneState"></span></div>
+      <div class="group">
+        <div class="field"><label>Код с телефона</label>
+          <input id="phoneCode" placeholder="6 цифр: приложение Clawd → Общая память с Telegram → Код синхронизации"></div>
+        <div class="actions"><button class="btn" id="savePhone">Сохранить</button></div>
+        <div id="phoneRows"></div>
+      </div>
+      <div class="note">Отходишь от компа на 5 минут — Клодик убегает к тебе в телефон, вернулся — прибегает обратно. Сообщения с телефона он приносит запиской. Брось файл мышкой на Клодика — улетит на телефон через PhotoSync. Комп и телефон — в одном Wi-Fi.</div>
+      <div class="header">Система</div>
+      <div class="group" id="system"></div>
+      <div class="header">Подсказки</div>
+      <div class="group">
+        <div class="row"><div class="ico">🖱</div><div class="txt"><div class="ttl">Двойной клик по Клодику</div><div class="sub">окошко «Что сделать?» · или Ctrl+Alt+K</div></div></div>
+        <div class="row"><div class="ico">✋</div><div class="txt"><div class="ttl">Схвати и брось</div><div class="sub">отскакивает от пола, можно бросить на окно</div></div></div>
+        <div class="row"><div class="ico">🌀</div><div class="txt"><div class="ttl">Игры</div><div class="sub">заходишь в игру — он уходит в портал</div></div></div>
+        <div class="row"><div class="ico">📲</div><div class="txt"><div class="ttl">PhotoSync</div><div class="sub">приносит файлы с телефона и уносит на телефон</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let cfg = {};
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  return r.json();
+}
+function toast(text) {
+  const t = $("toast");
+  t.textContent = text;
+  t.classList.add("on");
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove("on"), 1800);
+}
+async function save(patch) {
+  Object.assign(cfg, patch);
+  await api("/api/config", patch);
+}
+
+/* ---------- живой Клодик в шапке (тот же спрайт, что на экране) ---------- */
+const pet = $("pet"), g = pet.getContext("2d");
+let blinkUntil = 0, nextBlink = performance.now() + 2000, happyUntil = 0, hopV = 0, hop = 0, lastT = performance.now();
+function drawPet(t) {
+  const dt = Math.min(0.05, (t - lastT) / 1000); lastT = t;
+  if (t > nextBlink) { blinkUntil = t + 140; nextBlink = t + 2500 + Math.random() * 3000; }
+  if (hopV || hop > 0) { hop += hopV * dt; hopV -= 900 * dt; if (hop <= 0) { hop = 0; hopV = 0; } }
+  const color = (cfg.colors || [])[cfg.color || 0] || { body: "#d97757", eye: "#1a1a1a" };
+  const s = 6, ox = (pet.width - 18 * s) / 2, bob = Math.sin(t / 600) * 1.5;
+  const oy = pet.height - 13 * s - 4 - hop + bob;
+  g.clearRect(0, 0, pet.width, pet.height);
+  g.fillStyle = "rgba(0,0,0,.35)";
+  g.beginPath(); g.ellipse(pet.width / 2, pet.height - 4, 34 - hop / 3, 4, 0, 0, Math.PI * 2); g.fill();
+  const px = (x0, y0, x1, y1, c) => { g.fillStyle = c; g.fillRect(ox + x0 * s, oy + y0 * s, (x1 - x0) * s, (y1 - y0) * s); };
+  const B = color.body, E = color.eye;
+  const happy = t < happyUntil, legs = hop > 4 ? 3 : 2;
+  for (const c of [4, 6, 11, 13]) px(c, 10, c + 1, 10 + legs, B);
+  if (happy) { px(1, 2, 2, 6, B); px(2, 5, 3, 6, B); px(16, 2, 17, 6, B); px(15, 5, 16, 6, B); }
+  else { px(1, 6, 3, 8, B); px(15, 6, 17, 8, B); }
+  px(3, 3, 15, 10, B);
+  for (const cx of [6, 11]) {
+    if (happy) { px(cx - 1, 6, cx, 7, E); px(cx, 5, cx + 1, 6, E); px(cx + 1, 6, cx + 2, 7, E); }
+    else if (t < blinkUntil) px(cx, 6, cx + 1, 7, E);
+    else px(cx, 5, cx + 1, 7, E);
+  }
+  if (happy) { px(4, 7, 6, 8, "#ec6268cc"); px(12, 7, 14, 8, "#ec6268cc"); }
+  requestAnimationFrame(drawPet);
+}
+requestAnimationFrame(drawPet);
+pet.onclick = () => { happyUntil = performance.now() + 1500; hopV = 260; };
+
+/* ---------- вкладки ---------- */
+function moveInk() {
+  const on = document.querySelector(".tab.on"), ink = $("ink");
+  ink.style.left = on.offsetLeft + on.offsetWidth * 0.2 + "px";
+  ink.style.width = on.offsetWidth * 0.6 + "px";
+}
+document.querySelectorAll(".tab").forEach((tab) => tab.onclick = () => {
+  document.querySelectorAll(".tab, .page").forEach((e) => e.classList.remove("on"));
+  tab.classList.add("on");
+  $(tab.dataset.page).classList.add("on");
+  moveInk();
+  if (tab.dataset.page === "chatPage") $("ask").focus({ preventScroll: true });
+});
+window.addEventListener("resize", moveInk);
+
+/* ---------- строки-переключатели ---------- */
+function switchRow(parent, key, icon, title, sub, onChange) {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML = `<div class="ico">${icon}</div><div class="txt"><div class="ttl"></div><div class="sub"></div></div><div class="sw"></div>`;
+  row.querySelector(".ttl").textContent = title;
+  row.querySelector(".sub").textContent = sub;
+  const sw = row.querySelector(".sw");
+  const value = () => key ? !!cfg[key] : false;
+  sw.classList.toggle("on", value());
+  row.onclick = async () => {
+    const v = !sw.classList.contains("on");
+    sw.classList.toggle("on", v);
+    if (onChange) await onChange(v, sw); else await save({ [key]: v });
+  };
+  parent.appendChild(row);
+  return sw;
+}
+
+function render() {
+  const colors = $("colors"); colors.innerHTML = "";
+  cfg.colors.forEach((c, i) => {
+    const b = document.createElement("button");
+    b.className = "color" + (i === cfg.color ? " on" : "") + (c.locked ? " locked" : "");
+    b.style.background = c.body; b.style.setProperty("--eye", c.eye);
+    b.title = c.locked ? c.name + " — откроется за ачивку «" + c.need + "»" : c.name;
+    b.innerHTML = c.locked ? "<i>🔒</i>" : "<span></span>";
+    b.onclick = async () => {
+      if (c.locked) { toast("🔒 " + c.name + ": ачивка «" + c.need + "»"); return; }
+      await save({ color: i }); render(); happyUntil = performance.now() + 1200; hopV = 220; toast(c.name);
+    };
+    colors.appendChild(b);
+  });
+  document.querySelectorAll("#size button").forEach((b) => {
+    b.classList.toggle("on", +b.dataset.v === cfg.size);
+    b.onclick = async () => { await save({ size: +b.dataset.v }); render(); };
+  });
+
+  const beh = $("behavior"); beh.innerHTML = "";
+  switchRow(beh, "wander", "🚶", "Гуляет по экрану", "ходит по панели задач туда-сюда");
+  switchRow(beh, "phrases", "💬", "Болтает", "иногда говорит что-нибудь сам");
+  switchRow(beh, "ride", "🏄", "Прыгает по окнам", "запрыгивает на окна и катается, когда их двигаешь");
+  switchRow(beh, "break", "☕", "Напоминает про перерыв", "после полутора часов за компом");
+  switchRow(beh, "night", "🌙", "Ночной режим", "с 22 до 7 в колпаке, зевает, после часа ночи гонит спать");
+  switchRow(beh, "morning", "☀️", "Утренняя сводка", "первый раз за день: погода, непрочитанные в тг, ачивки");
+  switchRow(beh, "voice", "🎙", "Голос", "держи Ctrl+Alt+V и говори просьбу (нужен ключ Gemini)");
+  switchRow(beh, "evening", "📊", "Итоги дня", "вечером рассказывает, сколько ты сидел за компом и где; ещё — ПКМ по Клодику → «Итоги дня»");
+  switchRow(beh, "season", "🎃", "Праздники", "Хэллоуин — тыква, Новый год — ёлка и шапка Санты, 14 февраля — сердечки");
+  switchRow(beh, "poop", "💩", "Какает", "раз в 40–90 минут оставляет кучку — кликни по ней, чтобы убрать");
+
+  const scr = $("screen"); scr.innerHTML = "";
+  switchRow(scr, "react", "👀", "Реагирует на экран", "ютуб, музыка, код, ошибки, переписка, учёба");
+  switchRow(scr, "dance", "🎵", "Танцует под музыку", "когда открыт Spotify, Яндекс Музыка и т.п.");
+  switchRow(scr, "cursor", "🖱", "Следит за мышкой", "смотрит на курсор, щекотно, если водить по нему");
+  switchRow(scr, "portal", "🌀", "Прячется в портал в играх", "полноэкранные игры и игры из Steam/Epic/Riot");
+  switchRow(scr, "game_peek", "🎮", "Выглядывает в играх", "раз в минуту на пару секунд высовывается из портала, реагирует и комментирует победу или поражение (ИИ видит кадр)");
+  switchRow(scr, "music_ai", "🎧", "Чувствует музыку", "по названию трека понимает настроение: под быстрое танцует быстрее, под грустное грустит (ИИ)");
+  switchRow(scr, "calls", "📞", "Тихий режим в созвонах", "Discord, Telegram, Zoom держат микрофон — Клодик в наушниках молчит и кивает, когда говорят");
+  switchRow(scr, "errors_help", "🩹", "Помогает с ошибками", "видит окно с ошибкой — предлагает объяснить, что случилось");
+  switchRow(scr, "clip", "📋", "Буфер обмена", "скопировал английский текст или ссылку — предложит перевести или пересказать");
+  switchRow(scr, "watch_ai", "🍿", "Смотрит видео вместе с тобой", "раз в ~25 с ИИ видит кадр видео и Клодик смеётся, пугается или умиляется. Кадр уходит провайдеру ИИ, нужен ключ");
+
+  const prov = $("provider"); prov.innerHTML = "";
+  Object.entries(cfg.providers).forEach(([k, name]) => {
+    const b = document.createElement("button");
+    b.textContent = name; b.className = k === cfg.ai_provider ? "on" : "";
+    b.onclick = async () => { await save({ ai_provider: k }); render(); };
+    prov.appendChild(b);
+  });
+  $("model").placeholder = "по умолчанию: " + cfg.default_models[cfg.ai_provider];
+  $("model").value = cfg.ai_model || "";
+  $("url").value = cfg.ai_url || "";
+  $("urlField").style.display = cfg.ai_provider === "openai" ? "" : "none";
+  $("keyState").textContent = cfg.has_key ? "· ✅ сохранён" : "· не задан";
+  $("keyHelp").textContent = {
+    claude: "Ключ Claude: platform.claude.com → Settings → API keys.",
+    gemini: "Ключ Gemini (есть бесплатный): aistudio.google.com/apikey.",
+    openai: "Любой OpenAI-совместимый сервис: OpenAI, OpenRouter, LM Studio и т.п.",
+  }[cfg.ai_provider];
+  $("name").value = cfg.name || "";
+  $("about").value = cfg.about || "";
+
+  $("city").value = cfg.city || "";
+  $("phoneCode").value = cfg.phone_code || "";
+  const pr = $("phoneRows"); pr.innerHTML = "";
+  switchRow(pr, "phone_link", "📱", "Один Клодик на двоих", "убегает в телефон, когда ты отошёл от компа");
+  switchRow(pr, "notify_pc", "✉️", "Записки с телефона", "приносит уведомления о сообщениях с телефона");
+
+  const sys = $("system"); sys.innerHTML = "";
+  switchRow(sys, null, "🚀", "Запускать вместе с Windows", "Клодик появится сам после включения компа", async (v, sw) => {
+    const r = await api("/api/action", { act: "autostart", on: v });
+    sw.classList.toggle("on", r.on); cfg.autostart = r.on;
+    toast(r.on ? "Будет запускаться сам" : "Автозапуск выключен");
+  }).classList.toggle("on", !!cfg.autostart);
+  moveInk();
+}
+
+$("saveAi").onclick = async () => {
+  const patch = { ai_model: $("model").value.trim(), ai_url: $("url").value.trim() };
+  const key = $("key").value.trim();
+  let note = "Сохранено";
+  if (key) {
+    patch.ai_key = key;
+    // сами понимаем, чей ключ, чтобы не было «Ошибки 401» из-за не того провайдера
+    const guess = /^sk-ant-/.test(key) ? "claude" : /^(AIza|AQ\.)/.test(key) ? "gemini" : /^sk-/.test(key) ? "openai" : null;
+    if (guess && guess !== cfg.ai_provider) {
+      patch.ai_provider = guess;
+      patch.ai_model = "";
+      note = "Это ключ " + cfg.providers[guess] + " — переключил провайдер";
+    }
+  }
+  await save(patch);
+  if (patch.ai_key) { cfg.has_key = true; $("key").value = ""; }
+  render();
+  toast(note);
+};
+$("testAi").onclick = async () => {
+  const res = $("aiResult");
+  res.className = "result"; res.textContent = "проверяю…";
+  const r = await api("/api/test", {});
+  res.className = "result " + (r.ok ? "ok" : "bad");
+  res.textContent = (r.ok ? "✅ " : "❌ ") + r.text;
+};
+$("saveCity").onclick = async () => { await save({ city: $("city").value.trim() }); toast("Запомнил город 🌤"); };
+$("savePhone").onclick = async () => { await save({ phone_code: $("phoneCode").value.trim() }); toast("Код сохранён 📱"); };
+let accKey = "";
+function renderAccs(list) {
+  const key = list.map((a) => a.key + a.open).join() + cfg.acc;
+  if (key === accKey) return;
+  accKey = key;
+  const box = $("accs"); box.innerHTML = "";
+  for (const a of [{ key: "", name: "Без", open: true }, ...list]) {
+    const b = document.createElement("button");
+    b.textContent = (a.open ? "" : "🔒 ") + a.name;
+    b.className = (cfg.acc || "") === a.key ? "on" : "";
+    b.title = a.open ? a.name : "Откроется за ачивку «" + a.need + "»";
+    b.onclick = async () => {
+      if (!a.open) { toast("🔒 " + a.name + ": ачивка «" + a.need + "»"); return; }
+      await save({ acc: a.key }); accKey = ""; renderAccs(list); happyUntil = performance.now() + 1000; hopV = 200;
+    };
+    box.appendChild(b);
+  }
+}
+$("saveMe").onclick = async () => {
+  await save({ name: $("name").value.trim(), about: $("about").value.trim() });
+  $("meResult").className = "result ok"; $("meResult").textContent = "✅ запомнил";
+  setTimeout(() => $("meResult").textContent = "", 2000);
+};
+document.querySelectorAll("[data-act]").forEach((b) => b.onclick = async () => {
+  await api("/api/action", { act: b.dataset.act });
+  toast({ center: "Иду!", sleep: "Спокойной ночи", portal: "Бжжух!", poop: "Ой… 💩", day: "Смотри у Клодика 📊",
+          region: "Выдели область на экране ✂️" }[b.dataset.act]);
+});
+
+/* ---------- чат «Попросить» ---------- */
+const chat = $("chat");
+function bubble(text, me, cls = "") {
+  const m = document.createElement("div");
+  m.className = "msg " + (me ? "me" : "him") + (cls ? " " + cls : "");
+  m.textContent = text;
+  chat.appendChild(m);
+  chat.scrollTop = chat.scrollHeight;
+  return m;
+}
+function showItems(items) {
+  for (const it of items) {
+    if (it.confirm) {
+      const m = bubble(it.confirm, false);
+      const yn = document.createElement("div");
+      yn.className = "yn";
+      yn.innerHTML = '<button class="no">Нет</button><button class="yes">Да</button>';
+      yn.querySelectorAll("button").forEach((btn) => btn.onclick = async () => {
+        yn.remove();
+        const wait = bubble("делаю…", false, "typing");
+        const r = await api("/api/confirm", { id: it.id, yes: btn.classList.contains("yes") });
+        wait.remove(); showItems(r.items);
+      });
+      m.appendChild(yn);
+    } else bubble(it.text, false);
+  }
+  chat.scrollTop = chat.scrollHeight;
+}
+async function send(text) {
+  text = (text || $("ask").value).trim();
+  if (!text) return;
+  $("ask").value = "";
+  bubble(text, true);
+  const wait = bubble("думаю…", false, "typing");
+  try {
+    const r = await api("/api/ask", { text });
+    wait.remove(); showItems(r.items || [{ text: "Не понял ответ" }]);
+  } catch (e) { wait.textContent = "Клодик не отвечает 😿 Он запущен?"; }
+}
+$("sendBtn").onclick = () => send();
+$("ask").onkeydown = (e) => { if (e.key === "Enter") send(); };
+["Закрой все вкладки в фаерфоксе", "Что грузит комп?", "Сверни все", "Открой ютуб", "Сделай громче", "Заверши все процессы"]
+  .forEach((s) => {
+    const b = document.createElement("button");
+    b.className = "chip"; b.textContent = s; b.onclick = () => send(s);
+    $("suggest").appendChild(b);
+  });
+bubble("Привет! Я Клодик 👋 Попроси меня что-нибудь сделать на компе: закрыть программы, открыть сайт, сделать громче. " +
+       "Опасное (закрыть всё, выключить комп) я сначала спрошу.", false);
+
+/* ---------- ачивки ---------- */
+let achKey = "";
+function renderAch(list) {
+  const key = list.map((a) => a.id + a.value + a.done).join();
+  if (key === achKey) return;  // перерисовываем, только если что-то поменялось
+  const fresh = achKey && list.some((a) => a.done && !achKey.includes(a.id + a.value + "true"));
+  achKey = key;
+  $("achCount").textContent = list.filter((a) => a.done).length + " / " + list.length;
+  const box = $("achs"); box.innerHTML = "";
+  for (const a of list) {
+    const el = document.createElement("div");
+    el.className = "ach" + (a.done ? " done" : "");
+    const pct = Math.round(100 * a.value / a.goal);
+    el.innerHTML = `<div class="achico">${a.done ? a.icon : "🔒"}</div><div class="achtxt"><div class="ttl"></div>
+      <div class="sub"></div><div class="bar"><i style="width:${pct}%"></i></div></div>`;
+    el.querySelector(".ttl").textContent = a.title;
+    el.querySelector(".sub").textContent = a.desc + (a.reward ? " · открывает окрас «" + a.reward + "»" : "") +
+      (a.done ? "" : ` · ${a.value}/${a.goal}`);
+    box.appendChild(el);
+  }
+  if (fresh) { toast("🏆 Новая ачивка!"); api("/api/config").then((c) => { cfg = c; render(); }); }
+}
+
+/* ---------- статус ---------- */
+const MODES = { idle: "гуляет по экрану", walk: "гуляет по экрану", run: "бежит по делам", sleep: "спит 💤",
+                drag: "его несут ✋", fall: "летит!", slide: "катится", portal: "в портале — ты играешь 🎮" };
+async function poll() {
+  try {
+    const s = await api("/api/state");
+    $("dot").className = "dot" + (s.mode === "portal" || s.mode === "sleep" ? " off" : "");
+    $("status").textContent = (MODES[s.mode] || "на связи") + (s.app && s.mode !== "portal" ? " · сейчас: " + s.app : "");
+    const st = s.stats || {};
+    $("sPets").textContent = st.pets || 0;
+    $("sAsks").textContent = st.asks || 0;
+    $("sDays").textContent = st.since ? Math.max(1, Math.ceil((Date.now() / 1000 - st.since) / 86400)) : 1;
+    renderAch(s.ach || []);
+    renderAccs(s.accs || []);
+    $("wNow").textContent = s.weather ? "· сейчас " + s.weather : "";
+    $("phoneState").textContent = cfg.phone_code ? (s.phone_ok ? "🟢 на связи" : "⚪ не на связи") : "";
+  } catch (e) {
+    $("dot").className = "dot off"; $("status").textContent = "Клодик не запущен";
+  }
+}
+(async () => {
+  cfg = await api("/api/config");
+  render();
+  const tab = document.querySelector('.tab[data-page="' + location.hash.slice(1) + '"]');
+  if (tab) {
+    document.body.classList.add("instant");
+    tab.click();
+    setTimeout(() => document.body.classList.remove("instant"), 50);
+  }
+  poll(); setInterval(poll, 2000);
+})();
+</script>
+</body>
+</html>
