@@ -217,6 +217,7 @@ def item_open(key, done=None):
 DEFAULTS = {
     "color": 0, "size": 1, "wander": True, "phrases": True, "cursor": True, "ride": True, "react": True,
     "dance": True, "portal": True, "break": True, "poop": True, "watch_ai": True, "game_peek": True,
+    "aura_style": 0,  # 0 — свечение + частицы, 1 — только частицы (как было), 2 — только свечение
     "acc": "", "head": "", "face": "", "neck": "", "hand": "", "back": "", "pattern": "", "aura": "", "city": "", "weather": True, "night": True, "morning": True, "clip": True, "errors_help": True,
     "voice": True, "phone_link": True, "phone_code": "", "notify_pc": True,
     "music_ai": True, "calls": True, "season": True, "evening": True,
@@ -252,6 +253,25 @@ def bump_stat(key):
         if pet is not None and key in ("pets", "asks"):
             pet.day[key] = pet.day.get(key, 0) + 1
     except Exception:
+        pass
+
+
+_last_errors = {}
+
+
+def log_error():
+    """Текущее исключение — в clawd_error.log рядом со скриптом (одинаковые — не чаще раза в минуту)."""
+    import traceback
+    text = traceback.format_exc()
+    now = time.monotonic()
+    if now - _last_errors.get(text, -1e9) < 60:
+        return
+    _last_errors[text] = now
+    try:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "clawd_error.log")
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + text + "\n")
+    except OSError:
         pass
 
 
@@ -398,6 +418,11 @@ def window_rect(hwnd):
         user32 = ctypes.windll.user32
         if not hwnd or not user32.IsWindow(hwnd) or not user32.IsWindowVisible(hwnd) or user32.IsIconic(hwnd) or user32.IsZoomed(hwnd):
             return None
+        # «закрытые» окна некоторых программ не исчезают, а прячутся через DWM (cloaked)
+        cloaked = ctypes.c_int(0)
+        ctypes.windll.dwmapi.DwmGetWindowAttribute(hwnd, 14, ctypes.byref(cloaked), ctypes.sizeof(cloaked))
+        if cloaked.value:
+            return None
         r = _RECT()
         # без невидимых рамок Windows 10, иначе Clawd висит в воздухе над окном
         if ctypes.windll.dwmapi.DwmGetWindowAttribute(hwnd, 9, ctypes.byref(r), ctypes.sizeof(r)) != 0:
@@ -510,15 +535,22 @@ DECOR = {
 DECOR_LIGHTS = {"halloween": ("#ffd34d", "#ff9a2e", "#ffe680"), "newyear": ("#ff5a7a", "#ffd34d", "#6fb8ff", "#8fcf6a")}
 
 
-def pet_image(eyes="open", legs="stand", arms="normal", squash=0, look=0, mouth="", blush=False, carry=False, flip=False, acc=()):
-    """Тот же спрайт, что в приложении и плагине (Sprite.render), готовой картинкой с прозрачным фоном."""
+def pet_image(eyes="open", legs="stand", arms="normal", squash=0, look=0, mouth="", blush=False, carry=False, flip=False, acc=(),
+              glow=0):
+    """Тот же спрайт, что в приложении и плагине (Sprite.render), готовой картинкой с прозрачным фоном.
+    glow — фаза свечения ауры (0..3), если аура надета."""
     w, h = (GRID_W + 2 * PAD) * S, (GRID_H + 2 * PAD) * S
     img = tk.PhotoImage(width=w, height=h)
+    cells = set()  # силуэт: вокруг него светится аура
 
-    def px(x0, y0, x1, y1, color):
+    def draw(x0, y0, x1, y1, color):
         if flip:
             x0, x1 = GRID_W - x1, GRID_W - x0
         img.put(color, to=((x0 + PAD) * S, (y0 + PAD) * S, (x1 + PAD) * S, (y1 + PAD) * S))
+
+    def px(x0, y0, x1, y1, color):
+        cells.update((x, y) for x in range(x0, x1) for y in range(y0, y1))
+        draw(x0, y0, x1, y1, color)
 
     left, right, top, bottom = 3, 15, 3, 10
     if squash > 0:
@@ -587,6 +619,7 @@ def pet_image(eyes="open", legs="stand", arms="normal", squash=0, look=0, mouth=
         px(right, top - 5, right + 4, top - 1, PAPER)
         px(right + 3, top - 5, right + 4, top - 4, PAPER_EDGE)
         px(right + 1, top - 3, right + 3, top - 2, PAPER_EDGE)
+    W.glow(draw, cells, acc, glow, (-PAD, -PAD, GRID_W + PAD, GRID_H + PAD))
     return img
 
 
@@ -1046,6 +1079,8 @@ class Clawd:
         self.next_game_check = time.monotonic() + 3
         self.plat = None  # окно, на котором стоит
         self.plat_rect = None
+        self.next_feet_check = 0.0
+        self.feet_misses = 0  # сколько раз подряд под ногами не оказалось окна-платформы
         self.leaping = False
         self.next_screen = 0.0
         self.next_say = 0.0
@@ -1246,6 +1281,8 @@ class Clawd:
         """Аура из гардероба: частицы вокруг Клодика, чаще — когда он бегает."""
         it = W.ITEMS.get(CFG.get("aura") or "")
         if not it or it["slot"] != "aura" or now < self.next_aura or self.hidden or self.portal or self.away:
+            return
+        if CFG["aura_style"] == 2:  # «только свечение»
             return
         if not item_open(it["key"]):
             return
@@ -1812,6 +1849,16 @@ class Clawd:
     # ---------- жизнь ----------
 
     def tick(self):
+        """Кадр. Ошибка в кадре не должна замораживать Клодика: пишем её в clawd_error.log и живём дальше."""
+        try:
+            delay = self.frame()
+        except Exception:
+            delay = FRAME_MS
+            log_error()
+        self.root.after(delay, self.tick)
+
+    def frame(self):
+        """Один кадр; возвращает, через сколько мс следующий."""
         t = time.perf_counter()
         dt = min(0.05, t - self.last)
         self.last = t
@@ -1829,8 +1876,7 @@ class Clawd:
         self.life_tick(now)
         if self.hidden:
             self.game_peek_tick(now)
-            self.root.after(200, self.tick)
-            return
+            return 200
         if self.peek_until and now >= self.peek_until and not self.portal:
             # выглянул — и обратно в портал, тихо
             self.peek_until = 0.0
@@ -1849,7 +1895,7 @@ class Clawd:
         self.boo_tick(now)
         # следующий кадр ровно через 16 мс от начала этого
         spent = (time.perf_counter() - t) * 1000
-        self.root.after(max(1, int(FRAME_MS - spent)), self.tick)
+        return max(1, int(FRAME_MS - spent))
 
     def land(self, impact):
         self.squash_until = time.monotonic() + min(0.22, 0.06 + impact / 6000)
@@ -2060,10 +2106,39 @@ class Clawd:
             return None
         return hwnd, r
 
+    def plat_under_feet(self):
+        """Под ногами правда это окно? Некоторые программы при закрытии делают окно прозрачным или прячут,
+        а Windows всё ещё считает его видимым — тогда под ногами уже другое окно или рабочий стол."""
+        if not self.plat_rect or self.mode not in ("idle", "walk", "sleep"):
+            return True
+        user32 = ctypes.windll.user32
+
+        def pid_of(hwnd):
+            pid = ctypes.c_ulong()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            return pid.value
+
+        plat_pid = pid_of(self.plat)
+        fx = int(self.x + WIN_W / 2)
+        fy = int(self.plat_rect[1] + 6)
+        for dx in (-20, 0, 20):
+            hwnd = window_at(fx + dx, fy)
+            # само окно, его меню и подсказки (та же программа) или своё облачко — пол на месте
+            if hwnd and (hwnd == self.plat or pid_of(hwnd) in (plat_pid, os.getpid())):
+                return True
+        return False
+
     def follow_plat(self):
-        """Окно двигают — едет вместе с ним; закрыли или свернули — падает."""
+        """Окно двигают — едет вместе с ним; закрыли, свернули или спрятали — падает."""
         r = window_rect(self.plat)
+        if r is not None and time.monotonic() >= self.next_feet_check:
+            self.next_feet_check = time.monotonic() + 0.3
+            # три проверки подряд «под ногами пусто», чтобы не падать от мелькнувшей подсказки
+            self.feet_misses = 0 if self.plat_under_feet() else self.feet_misses + 1
+            if self.feet_misses >= 3:
+                r = None
         if r is None:
+            self.feet_misses = 0
             self.plat = None
             self.plat_rect = None
             if self.mode != "fall":
@@ -2265,7 +2340,7 @@ class Clawd:
         wear = {}
         for slot in W.SLOT_KEYS:
             key = CFG.get(slot) or ""
-            if slot != "aura" and W.ITEMS.get(key, {}).get("slot") == slot and item_open(key, done):
+            if W.ITEMS.get(key, {}).get("slot") == slot and item_open(key, done):
                 wear[slot] = key
         if head is None and CFG["season"] and clawd_extras.season() == "newyear" and "head" not in wear:
             head = "santa"
@@ -3276,14 +3351,19 @@ class Clawd:
         look = self.dir if moving else (self.look_cursor if self.mode == "idle" else 0)
         flip = self.dir < 0 and self.carry
         acc = self.outfit()
-        key = (eyes, legs, squash, look, expr == "happy", self.carry, flip, self.mode == "drag", expr == "surprised", acc)
+        if CFG["aura_style"] == 1:
+            # «только частицы» — без свечения вокруг тела
+            acc = tuple(k for k in acc if W.ITEMS.get(k, {}).get("slot") != "aura")
+        # аура переливается: 4 фазы, ~6 раз в секунду
+        glow = int(now * 6) % 4 if W.aura_of(acc) else 0
+        key = (eyes, legs, squash, look, expr == "happy", self.carry, flip, self.mode == "drag", expr == "surprised", acc, glow)
         if key != self.pet_key:
             self.pet_key = key
             img = self.frames.get(key)
             if img is None:
                 img = pet_image(eyes=eyes, legs=legs, squash=squash, look=look, blush=expr == "happy",
                                 carry=self.carry, flip=flip, arms="up" if self.mode == "drag" else "normal",
-                                mouth="open" if expr == "surprised" or self.mode == "drag" else "", acc=acc)
+                                mouth="open" if expr == "surprised" or self.mode == "drag" else "", acc=acc, glow=glow)
                 self.frames[key] = img
             cv.itemconfigure(self.pet_item, image=img)
         # на портале стоит ногами на его середине и проваливается вниз

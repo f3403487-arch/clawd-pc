@@ -315,6 +315,51 @@ def draw(px, items, phase, left, right, top, bottom, ey, look, body, eye, hands_
             _stamp(px, it["rows"], pal, right + 1 + it["dx"], top + 5 - h + it["dy"], body, eye)
 
 
+GLOW = 3  # на сколько клеток свечение ауры выходит за силуэт
+
+
+def aura_of(keys):
+    """Аура среди надетого (или None)."""
+    return next((ITEMS[k]["aura"] for k in keys if k in ITEMS and ITEMS[k]["aura"]), None)
+
+
+def glow(px, cells, keys, phase, bounds):
+    """Свечение ауры вокруг силуэта (cells — занятые клетки): три кольца, внутреннее сплошное,
+    среднее — «рябью», внешнее — редкими искрами. phase 0..3 двигает рябь и искры, у многоцветных аур
+    ещё и цвета бегут по кольцам. bounds = (x0, y0, x1, y1) — куда можно рисовать."""
+    aura = aura_of(keys)
+    if aura is None or not cells:
+        return
+    cols = aura["colors"] or ["#ff6fa8", "#ff9fc0"]
+    n = len(cols)
+    x0, y0, x1, y1 = bounds
+    # щели в одну клетку (между ножками, под рукой) — часть силуэта: иначе свечение заливает их и Клодик
+    # превращается в светящийся комок
+    gaps = set()
+    xs = [x for x, _ in cells]
+    ys = [y for _, y in cells]
+    for x in range(min(xs), max(xs) + 1):
+        for y in range(min(ys), max(ys) + 1):
+            if (x, y) not in cells and (((x - 1, y) in cells and (x + 1, y) in cells) or
+                                        ((x, y - 1) in cells and (x, y + 1) in cells)):
+                gaps.add((x, y))
+    taken = set(cells) | gaps
+    ring = set(taken)
+    for k in range(GLOW):
+        ring = {(x + dx, y + dy) for x, y in ring for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))} - taken
+        taken |= ring
+        # мало цветов — внутри светлый (последний), снаружи насыщенный; много — радуга бежит по кругу
+        color = cols[(k + phase) % n] if n >= 4 else cols[max(0, n - 1 - k)]
+        for x, y in sorted(ring):
+            if not (x0 <= x < x1 and y0 <= y < y1):
+                continue
+            if k == 1 and (x + y + phase) % 2:
+                continue
+            if k == 2 and (x + 2 * y + phase) % 4:
+                continue
+            px(x, y, x + 1, y + 1, color)
+
+
 def for_ui():
     """Всё для окна настроек (без вещей, которые надеваются сами)."""
     return {"slots": [{"key": k, "name": n, "icon": i} for k, n, i in SLOTS],

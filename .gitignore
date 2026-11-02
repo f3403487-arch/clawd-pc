@@ -6,3 +6,4 @@ photosync_config.json
 
 __pycache__/
 *.pyc
+clawd_error.log

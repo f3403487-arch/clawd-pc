@@ -196,6 +196,9 @@
       <div class="header">Гардероб <span class="achcount" id="wCount"></span></div>
       <div class="group">
         <div class="seg wslots" id="wSlots"></div>
+        <div class="seg" id="auraStyle" style="margin: 12px 14px 0; display: none">
+          <button data-v="0">✨ Свечение + частицы</button><button data-v="1">Только частицы</button><button data-v="2">Только свечение</button>
+        </div>
         <div class="wgrid" id="wGrid"></div>
         <div class="actions">
           <button class="btn" id="wRandom">🎲 Случайный образ</button>
@@ -373,9 +376,47 @@ function wDraw(px, keys, phase, gm, body, eye, handsFree) {
     else if (it.slot === "hand" && handsFree) wStamp(px, it.rows, it.pal, right + 1 + it.dx, top + 5 - it.rows.length + it.dy, body, eye);
   }
 }
+/* свечение ауры вокруг силуэта — как clawd_wardrobe.glow */
+function wGlow(draw, cells, keys, phase) {
+  const aura = keys.map((k) => W.items[k] && W.items[k].aura).find(Boolean);
+  if (!aura || !cells.size) return;
+  const cols = aura.colors.length ? aura.colors : ["#ff6fa8", "#ff9fc0"], n = cols.length;
+  const has = (set, x, y) => set.has(x + "," + y);
+  const pts = [...cells].map((c) => c.split(",").map(Number));
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const taken = new Set(cells);
+  for (let x = Math.min(...xs); x <= Math.max(...xs); x++) for (let y = Math.min(...ys); y <= Math.max(...ys); y++) {
+    if (!has(cells, x, y) && ((has(cells, x - 1, y) && has(cells, x + 1, y)) || (has(cells, x, y - 1) && has(cells, x, y + 1)))) taken.add(x + "," + y);
+  }
+  let ring = new Set(taken);
+  for (let k = 0; k < 3; k++) {
+    const next = new Set();
+    for (const c of ring) {
+      const [x, y] = c.split(",").map(Number);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const key = (x + dx) + "," + (y + dy);
+        if (!taken.has(key)) next.add(key);
+      }
+    }
+    next.forEach((c) => taken.add(c));
+    ring = next;
+    const color = n >= 4 ? cols[(k + phase) % n] : cols[Math.max(0, n - 1 - k)];
+    for (const c of ring) {
+      const [x, y] = c.split(",").map(Number);
+      if (k === 1 && (x + y + phase) % 2) continue;
+      if (k === 2 && (x + 2 * y + phase) % 4) continue;
+      draw(x, y, x + 1, y + 1, color);
+    }
+  }
+}
 /* Клодик в позе «стоит» — для шапки окна и карточек гардероба */
 function drawClawd(g, s, ox, oy, o) {
-  const px = (x0, y0, x1, y1, c) => { g.fillStyle = c; g.fillRect(ox + x0 * s, oy + y0 * s, (x1 - x0) * s, (y1 - y0) * s); };
+  const cells = new Set();
+  const draw = (x0, y0, x1, y1, c) => { g.fillStyle = c; g.fillRect(ox + x0 * s, oy + y0 * s, (x1 - x0) * s, (y1 - y0) * s); };
+  const px = (x0, y0, x1, y1, c) => {
+    for (let x = x0; x < x1; x++) for (let y = y0; y < y1; y++) cells.add(x + "," + y);
+    draw(x0, y0, x1, y1, c);
+  };
   const B = o.body, E = o.eye, keys = o.keys || [], gm = { left: 3, right: 15, top: 3, bottom: 10, ey: 5, look: 0 };
   wDraw(px, keys, "back", gm, B, E);
   for (const c of [4, 6, 11, 13]) px(c, 10, c + 1, 10 + (o.legs || 2), B);
@@ -390,9 +431,14 @@ function drawClawd(g, s, ox, oy, o) {
   }
   if (o.happy) { px(4, 7, 6, 8, "#ec6268cc"); px(12, 7, 14, 8, "#ec6268cc"); }
   wDraw(px, keys, "front", gm, B, E, !o.happy);
+  if (auraGlowOn()) wGlow(draw, cells, keys, o.glow || 0);
 }
 function petColor() { return (cfg.colors || [])[cfg.color || 0] || { body: "#d97757", eye: "#1a1a1a" }; }
+/* стиль ауры: 0 — свечение + частицы, 1 — только частицы (как было), 2 — только свечение */
+const auraGlowOn = () => (cfg.aura_style || 0) !== 1;
+const auraMotesOn = () => (cfg.aura_style || 0) !== 2;
 function wearing() { return W.slots.map((s) => cfg[s.key]).filter((k) => k && W.items[k] && openSet.has(k)); }
+const glowPhase = (t) => Math.floor(t / 166) % 4;
 
 /* ---------- живой Клодик в шапке (тот же спрайт, что на экране) ---------- */
 const pet = $("pet"), g = pet.getContext("2d");
@@ -410,7 +456,7 @@ function drawPet(t) {
   g.beginPath(); g.ellipse(pet.width / 2, pet.height - 4, 34 - hop / 3, 4, 0, 0, Math.PI * 2); g.fill();
   // аура: частицы всплывают за спиной
   const aura = W.items[cfg.aura] && openSet.has(cfg.aura) ? W.items[cfg.aura].aura : null;
-  if (aura && t > nextMote) {
+  if (aura && auraMotesOn() && t > nextMote) {
     nextMote = t + aura.every * 1000 * (0.6 + Math.random() * 0.8);
     motes.push({ x: pet.width / 2 + (Math.random() - 0.5) * 70, y: oy + 20 + Math.random() * 40, t0: t, a: aura,
                  c: aura.colors.length ? aura.colors[Math.floor(Math.random() * aura.colors.length)] : "#ff6fa8",
@@ -427,7 +473,7 @@ function drawPet(t) {
   }
   g.globalAlpha = 1;
   drawClawd(g, s, ox, oy, { body: color.body, eye: color.eye, keys: wearing(), happy: t < happyUntil,
-                            blink: t < blinkUntil, legs: hop > 4 ? 3 : 2 });
+                            blink: t < blinkUntil, legs: hop > 4 ? 3 : 2, glow: glowPhase(t) });
   requestAnimationFrame(drawPet);
 }
 requestAnimationFrame(drawPet);
@@ -589,7 +635,7 @@ function itemPreview(it) {
   const ox = cv.width / 2 - 9 * s, oy = cv.height - 13 * s - 4;
   cg.fillStyle = "rgba(0,0,0,.3)";
   cg.beginPath(); cg.ellipse(cv.width / 2, cv.height - 4, 17, 2.5, 0, 0, Math.PI * 2); cg.fill();
-  if (it.slot === "aura") {
+  if (it.slot === "aura" && auraMotesOn()) {
     // ауру показываем застывшими частицами вокруг
     const a = it.aura, spots = [[14, 20], [66, 16], [22, 40], [62, 38], [40, 8], [8, 30], [74, 28]];
     spots.forEach(([x, y], i) => {
@@ -600,12 +646,12 @@ function itemPreview(it) {
       else cg.fillRect(x, y, 4, 4);
     });
   }
-  drawClawd(cg, s, ox, oy, { body: color.body, eye: color.eye, keys: it.slot === "aura" ? [] : [it.key] });
+  drawClawd(cg, s, ox, oy, { body: color.body, eye: color.eye, keys: [it.key] });
   return cv;
 }
 let wKey = "";
 function renderWardrobe(force) {
-  const key = wSlot + "|" + [...openSet].join() + "|" + W.slots.map((s) => cfg[s.key]).join() + "|" + cfg.color;
+  const key = wSlot + "|" + [...openSet].join() + "|" + W.slots.map((s) => cfg[s.key]).join() + "|" + cfg.color + "|" + cfg.aura_style;
   if (key === wKey && !force) return;
   wKey = key;
   const all = Object.values(W.items);
@@ -618,6 +664,12 @@ function renderWardrobe(force) {
     b.onclick = () => { wSlot = s.key; renderWardrobe(); };
     tabs.appendChild(b);
   }
+  const as = $("auraStyle");
+  as.style.display = wSlot === "aura" ? "flex" : "none";
+  as.querySelectorAll("button").forEach((b) => {
+    b.classList.toggle("on", +b.dataset.v === (cfg.aura_style || 0));
+    b.onclick = async () => { await save({ aura_style: +b.dataset.v }); renderWardrobe(true); toast(b.textContent); };
+  });
   const grid = $("wGrid"); grid.innerHTML = "";
   // сначала открытые, потом по тому, что раньше откроется
   const rank = (it) => openSet.has(it.key) ? -1 : typeof it.need === "number" ? it.need : 99;
