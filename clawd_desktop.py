@@ -61,13 +61,59 @@ GAME_DIRS = ("\\steamapps\\", "\\epic games\\", "\\riot games\\", "\\battle.net\
 EVENTS = queue.Queue()
 
 # окошки «Что сделать?» и «Точно?» — цвета тёмной темы Telegram
-POP_BG, POP_BORDER, POP_SHADOW = "#211b17", "#e0855f", "#0a0807"
-POP_FIELD, POP_FIELD_EDGE = "#15110e", "#3d312a"
-POP_TEXT, POP_TEXT2, POP_SUB = "#f6ede4", "#d9cabd", "#9b8a7c"
-POP_ACCENT, POP_ACCENT2 = "#f0a07a", "#d97757"
-POP_CHIP, POP_CHIP_HOVER = "#2e241f", "#3c2f28"
-POP_NO, POP_NO_HOVER = "#2e241f", "#3c2f28"
+# темы оформления: окно настроек (clawd_ui.html берёт их из /api/config) и облачка/окошки Клодика (POP_*)
+THEMES = {
+    "warm": {"name": "Тёплая", "bg": "#15110e", "cell": "#211b17", "cell2": "#2b231e", "hover": "#2a221d", "line": "#3d312a",
+             "shadow": "#0a0807", "text": "#f6ede4", "text2": "#d9cabd", "sub": "#9b8a7c", "accent": "#f0a07a",
+             "accent2": "#d97757", "accent_hi": "#f0a07a", "accent3": "#d97757", "on_accent": "#1a0f0a",
+             "border": "#e0855f", "red": "#c94a3f", "green": "#8fcf6a", "me": "#3a2a21", "sel": "#2b1f19",
+             "sw_on": "#3b2419", "hero": "#2a1e18", "dots": "rgba(240,160,122,.05)"},
+    "ocean": {"name": "Океан", "bg": "#101826", "cell": "#172234", "cell2": "#1f2d44", "hover": "#1d2a40", "line": "#2c3d5a",
+              "shadow": "#070b12", "text": "#eaf0f8", "text2": "#c9d4e4", "sub": "#8b9ab3", "accent": "#ffb38a",
+              "accent2": "#ffb38a", "accent_hi": "#ffcaa8", "accent3": "#7fb8ff", "on_accent": "#2a1408",
+              "border": "#7fb8ff", "red": "#ef6a6a", "green": "#7fe0a8", "me": "#253552", "sel": "#22324b",
+              "sw_on": "#3a2a24", "hero": "#1b2a42", "dots": "rgba(127,184,255,.06)"},
+    "neon": {"name": "Неон", "bg": "#0e0e12", "cell": "#17171d", "cell2": "#202028", "hover": "#1d1d24", "line": "#2e2e3a",
+             "shadow": "#000000", "text": "#f2f2f5", "text2": "#d0d0d8", "sub": "#8d8d99", "accent": "#e8ff4a",
+             "accent2": "#e8ff4a", "accent_hi": "#f2ff8a", "accent3": "#ff4fa0", "on_accent": "#14160a",
+             "border": "#ff4fa0", "red": "#ff4f6a", "green": "#e8ff4a", "me": "#2a1a26", "sel": "#26281a",
+             "sw_on": "#2a2e12", "hero": "#1a1420", "dots": "rgba(255,79,160,.07)"},
+    "forest": {"name": "Лес", "bg": "#0f1a14", "cell": "#16241c", "cell2": "#1e3026", "hover": "#1c2c23", "line": "#2c4636",
+               "shadow": "#06100a", "text": "#e8f2ea", "text2": "#c8dccd", "sub": "#8fa596", "accent": "#9be36a",
+               "accent2": "#9be36a", "accent_hi": "#b9f08f", "accent3": "#f2c14e", "on_accent": "#11200a",
+               "border": "#f2c14e", "red": "#e0664a", "green": "#9be36a", "me": "#24392c", "sel": "#22351f",
+               "sw_on": "#26401c", "hero": "#1b2e22", "dots": "rgba(242,193,78,.05)"},
+    "night": {"name": "Ночь", "bg": "#14111f", "cell": "#1f1a30", "cell2": "#28213d", "hover": "#27203a", "line": "#3a3154",
+              "shadow": "#0a0812", "text": "#ede9f7", "text2": "#cfc8e3", "sub": "#9a92b3", "accent": "#5ee6b0",
+              "accent2": "#5ee6b0", "accent_hi": "#8ff2cb", "accent3": "#b48cff", "on_accent": "#0f1f19",
+              "border": "#b48cff", "red": "#e0566a", "green": "#5ee6b0", "me": "#2a2147", "sel": "#1a2b2e",
+              "sw_on": "#173a30", "hero": "#251d3a", "dots": "rgba(180,140,255,.06)"},
+    "light": {"name": "Светлая", "bg": "#f3eee6", "cell": "#ffffff", "cell2": "#efe8dd", "hover": "#f7f2ea", "line": "#ddd2c4",
+              "shadow": "#cfc4b6", "text": "#2a2420", "text2": "#4a413a", "sub": "#7d7268", "accent": "#c8603f",
+              "accent2": "#d97757", "accent_hi": "#e8916f", "accent3": "#4f8fd8", "on_accent": "#ffffff",
+              "border": "#d97757", "red": "#c94a3f", "green": "#3f9a5a", "me": "#fbe3d7", "sel": "#fdeee6",
+              "sw_on": "#f6d3c2", "hero": "#fbf2e8", "dots": "rgba(217,119,87,.08)"},
+}
+POP_BG = POP_BORDER = POP_SHADOW = POP_FIELD = POP_FIELD_EDGE = POP_TEXT = POP_TEXT2 = POP_SUB = ""
+POP_ACCENT = POP_ACCENT2 = POP_ON_ACCENT = POP_CHIP = POP_CHIP_HOVER = POP_NO = POP_NO_HOVER = ""
 POP_RED, POP_RED_HOVER = "#c94a3f", "#dc5a4e"
+
+
+def apply_theme(key):
+    """Цвета облачков и окошек Клодика под выбранную тему (новые окошки берут их сразу)."""
+    global POP_BG, POP_BORDER, POP_SHADOW, POP_FIELD, POP_FIELD_EDGE, POP_TEXT, POP_TEXT2, POP_SUB
+    global POP_ACCENT, POP_ACCENT2, POP_ON_ACCENT, POP_CHIP, POP_CHIP_HOVER, POP_NO, POP_NO_HOVER, POP_RED
+    th = THEMES.get(key) or THEMES["warm"]
+    POP_BG, POP_BORDER, POP_SHADOW = th["cell"], th["border"], th["shadow"]
+    POP_FIELD, POP_FIELD_EDGE = th["bg"], th["line"]
+    POP_TEXT, POP_TEXT2, POP_SUB = th["text"], th["text2"], th["sub"]
+    POP_ACCENT, POP_ACCENT2, POP_ON_ACCENT = th["accent"], th["accent2"], th["on_accent"]
+    POP_CHIP, POP_CHIP_HOVER = th["cell2"], th["hover"]
+    POP_NO, POP_NO_HOVER = th["cell2"], th["hover"]
+    POP_RED = th["red"]
+
+
+apply_theme("warm")
 POP_TAIL = 12
 STEP = 3  # «пиксель» ступенчатых углов
 BW = 2  # толщина рамки
@@ -217,10 +263,11 @@ def item_open(key, done=None):
 DEFAULTS = {
     "color": 0, "size": 1, "wander": True, "phrases": True, "cursor": True, "ride": True, "react": True,
     "dance": True, "portal": True, "break": True, "poop": True, "watch_ai": True, "game_peek": True,
+    "ui_theme": "warm",  # тема оформления: ключ из THEMES
     "aura_style": 0,  # 0 — свечение + частицы, 1 — только частицы (как было), 2 — только свечение
     "acc": "", "head": "", "face": "", "neck": "", "hand": "", "back": "", "pattern": "", "aura": "", "city": "", "weather": True, "night": True, "morning": True, "clip": True, "errors_help": True,
     "voice": True, "phone_link": True, "phone_code": "", "notify_pc": True,
-    "music_ai": True, "calls": True, "season": True, "evening": True,
+    "music_ai": True, "calls": True, "season": True, "evening": True, "decor": "auto",
     "ai_provider": "claude", "ai_key": "", "ai_model": "", "ai_url": "", "name": "", "about": "",
 }
 WATCHING = ("youtube", "film", "shorts")  # тут Clawd смотрит кадры вместе с тобой
@@ -293,13 +340,26 @@ def open_settings(page=""):
     webbrowser.open(url)
 
 
+ICON_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "clawd.ico")
+ICON_PNG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "clawd_icon.png")
+DESKTOP_LNK = os.path.join(os.path.expanduser("~"), "Desktop", "Clawd.lnk")
+
+
+def make_shortcut(path, args=""):
+    """Ярлык, который запускает Clawd без консоли, с иконкой Клодика. args="--settings" — ещё и открыть настройки
+    (а если Clawd уже запущен — только настройки)."""
+    pyw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+    script = os.path.abspath(__file__)
+    icon = f"$s.IconLocation='{ICON_FILE},0';" if os.path.exists(ICON_FILE) else ""
+    ps = (f"$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{path}');"
+          f"$s.TargetPath='{pyw}';$s.Arguments='\"{script}\" {args}';$s.WorkingDirectory='{os.path.dirname(script)}';"
+          f"$s.Description='Clawd — пиксельный питомец';{icon}$s.Save()")
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps], creationflags=0x08000000)
+
+
 def set_autostart(on):
     if on:
-        pyw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
-        script = os.path.abspath(__file__)
-        ps = (f"$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{STARTUP_LNK}');"
-              f"$s.TargetPath='{pyw}';$s.Arguments='\"{script}\"';$s.WorkingDirectory='{os.path.dirname(script)}';$s.Save()")
-        subprocess.run(["powershell", "-NoProfile", "-Command", ps], creationflags=0x08000000)
+        make_shortcut(STARTUP_LNK)
     elif os.path.exists(STARTUP_LNK):
         os.remove(STARTUP_LNK)
 
@@ -522,17 +582,8 @@ def classify(exe, title):
     return None, None, None
 
 
-# праздничные украшения рядом с Клодиком (пиксель-арт, буквы — цвета, «*» — мигающие огоньки)
-DECOR = {
-    "halloween": (["....gg......", "...gg.......", "..oOooOooO..", ".ooOooOooOo.", "oOyyOooOyyOo", "oOooOooOooOo",
-                   "oOoyyyyyyoOo", "oOooyOOyooOo", ".ooOooOooOo.", "..oOooOooO.."],
-                  {"g": "#4f8a2e", "o": "#f08a24", "O": "#c96a12", "y": "*"}),
-    "newyear": (["......S......", ".....SSS.....", "......G......", ".....GGG.....", "....G*GGG....", "...GGGG*GG...",
-                 "....GGGGG....", "...G*GGGGG...", "..GGGGG*GGG..", "...GGGGGGG...", "..GG*GGGG*G..", ".GGGGGG*GGGG.",
-                 "GGG*GGGGGG*GG", ".....TTT.....", ".....TTT....."],
-                {"S": "#ffd34d", "G": "#2f8f3a", "T": "#7a4a26"}),
-}
-DECOR_LIGHTS = {"halloween": ("#ffd34d", "#ff9a2e", "#ffe680"), "newyear": ("#ff5a7a", "#ffd34d", "#6fb8ff", "#8fcf6a")}
+# праздничные украшения — в clawd_wardrobe (общие с телефоном)
+DECOR, DECOR_LIGHTS, DECOR_NAMES = W.DECOR, W.DECOR_LIGHTS, W.DECOR_NAMES
 
 
 def pet_image(eyes="open", legs="stand", arms="normal", squash=0, look=0, mouth="", blush=False, carry=False, flip=False, acc=(),
@@ -1002,6 +1053,11 @@ class Ghost:
 class Clawd:
     def __init__(self):
         self.root = tk.Tk()
+        try:
+            # иконка Клодика у всех его окошек («Что сделать?», выделение области…)
+            self.root.iconbitmap(default=ICON_FILE)
+        except tk.TclError:
+            pass
         self.root.title("Clawd")
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
@@ -1167,6 +1223,7 @@ class Clawd:
         self.menu.add_command(label="Итоги дня", command=self.day_report)
         self.menu.add_command(label="Настройки…", command=open_settings)
         self.menu.add_command(label="Гардероб…", command=lambda: open_settings("wardrobePage"))
+        self.menu.add_command(label="Сезонное…", command=lambda: open_settings("wardrobePage:seasonal"))
         self.menu.add_separator()
         self.menu.add_command(label="Позвать в центр", command=self.come_center)
         self.menu.add_command(label="Уложить спать", command=self.go_sleep)
@@ -1450,8 +1507,9 @@ class Clawd:
             break  # по одной за раз, чтобы каждую было видно
 
     def apply_look(self):
-        """Окрас и размер из настроек."""
+        """Окрас, размер и тема оформления из настроек."""
         global S, BODY, EYE
+        apply_theme(CFG.get("ui_theme"))
         idx = CFG["color"] if 0 <= CFG["color"] < len(COLORS) and color_open(CFG["color"]) else 0
         color = COLORS[idx]
         S = {0: 4, 1: 5, 2: 7}.get(CFG["size"], 5)
@@ -2561,7 +2619,7 @@ class Clawd:
                 x0 = 14 + i * (bw + 10)
                 self.popup_button(cv, x0, by, x0 + bw, by + 34, label,
                                   POP_ACCENT2 if primary else POP_NO, POP_ACCENT if primary else POP_NO_HOVER,
-                                  "#1a0f0a" if primary else POP_TEXT,
+                                  POP_ON_ACCENT if primary else POP_TEXT,
                                   lambda f=fn: (self.close_popup(), f() if f else None), f"btn{i}",
                                   border=None if primary else POP_FIELD_EDGE)
         if timeout:
@@ -2990,7 +3048,9 @@ class Clawd:
             return
         self.next_season = now + 60
         kind = clawd_extras.season() if CFG["season"] else None
-        want = kind if kind in DECOR else None
+        choice = CFG.get("decor") or "auto"
+        # «Сезонное»: можно поставить тыкву хоть в мае; auto — как раньше, по календарю
+        want = (kind if kind in DECOR else None) if choice == "auto" else (choice if choice in DECOR else None)
         if (self.decor.kind if self.decor else None) != want:
             if self.decor:
                 self.decor.destroy()
@@ -2999,6 +3059,12 @@ class Clawd:
                 self.say("Бу! 🎃 Хэллоуин же!", 3)
             elif want == "newyear":
                 self.say("Скоро Новый год! 🎄", 3)
+            elif want == "valentine":
+                self.say("Это тебе! 💘", 3)
+            elif want == "spring":
+                self.say("Весна! 🌸 Цветочек расцвёл", 3)
+            elif want == "summer":
+                self.say("Лето! ☀️ Ура!", 3)
         if self.decor:
             self.decor.show(not self.hidden)
         if kind == "valentine" and not self.hidden and random.random() < 0.3:
@@ -3017,8 +3083,12 @@ class Clawd:
             if d:
                 d.jump(380)
             for _ in range(3):
-                self.spawn("spark")
-            self.say(random.choice(["С наступающим! 🎄", "Хочу рыбку в подарок 🐟", "Огоньки! ✨"]))
+                self.spawn("heart" if d and d.kind == "valentine" else "spark")
+            self.say(random.choice({
+                "valentine": ["Люблю тебя! 💘", "Сердечко! ♥", "Ты мой лучший друг 💗"],
+                "spring": ["Пахнет весной 🌸", "Поливаю цветочек 💧", "Расти большой! 🌱"],
+                "summer": ["Жарко! ☀️", "Хочу на море 🏖", "Где моё мороженое? 🍦"],
+            }.get(d.kind if d else "", ["С наступающим! 🎄", "Хочу рыбку в подарок 🐟", "Огоньки! ✨"])))
             return
         self.leave_plat()
         if self.mode == "sleep":
@@ -3445,6 +3515,14 @@ class Handler(BaseHTTPRequestHandler):
         return origin in (None, f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}")
 
     def do_GET(self):
+        path = self.path.split("?")[0]
+        if path in ("/icon.png", "/favicon.ico"):
+            ico = path == "/favicon.ico"
+            try:
+                with open(ICON_FILE if ico else ICON_PNG, "rb") as f:
+                    return self.send(200, f.read(), "image/x-icon" if ico else "image/png")
+            except OSError:
+                return self.send(404, b"no icon", "text/plain")
         if self.path == "/ui":
             try:
                 with open(UI_FILE, "rb") as f:
@@ -3461,6 +3539,10 @@ class Handler(BaseHTTPRequestHandler):
             for it in cfg["wardrobe"]["items"]:
                 it["need_text"] = need_text(it["need"])
             cfg["open"] = sorted(k for k in W.ITEMS if item_open(k, done))
+            cfg["decors"] = [{"key": k, "name": DECOR_NAMES[k], "rows": DECOR[k][0], "colors": DECOR[k][1],
+                              "lights": DECOR_LIGHTS[k]} for k in DECOR]
+            cfg["season_now"] = clawd_extras.season() or ""
+            cfg["themes"] = THEMES
             cfg["autostart"] = os.path.exists(STARTUP_LNK)
             cfg["providers"] = clawd_agent.PROVIDERS
             cfg["default_models"] = clawd_agent.DEFAULT_MODELS
@@ -3515,6 +3597,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {"ok": True})
         if self.path == "/api/action":
             act = str(data.get("act", ""))
+            if act == "decor":
+                if PET.get("pet"):
+                    PET["pet"].next_season = 0.0  # поменять украшение сразу, а не через минуту
+                return self.send(200, {"ok": True})
             if act == "autostart":
                 set_autostart(bool(data.get("on")))
                 return self.send(200, {"ok": True, "on": os.path.exists(STARTUP_LNK)})
@@ -3591,6 +3677,9 @@ def main():
         pass
     pet = Clawd()
     PET["pet"] = pet
+    if os.path.exists(STARTUP_LNK):
+        # старый ярлык автозапуска был без иконки — пересоздаём (в фоне, PowerShell не быстрый)
+        threading.Thread(target=make_shortcut, args=(STARTUP_LNK,), daemon=True).start()
     clawd_extras.start_phone_listener(lambda data: pet.life_q.put(("phone", data)))
     if "--settings" in sys.argv:
         open_settings()

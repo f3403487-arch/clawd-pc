@@ -21,15 +21,20 @@ SLOTS = [
     ("back", "Спина", "🦋"), ("pattern", "Узор", "🦓"), ("aura", "Аура", "✨"),
 ]
 SLOT_KEYS = [s for s, _, _ in SLOTS]
+# сезонные вещи — во вкладке «Сезонное», сгруппированы по праздникам (носятся в своём слоте)
+SEASONS = [
+    ("halloween", "Хэллоуин", "🎃"), ("newyear", "Новый год", "🎄"), ("valentine", "День святого Валентина", "💘"),
+    ("spring", "Весна", "🌸"), ("summer", "Лето", "☀️"),
+]
 
 ITEMS = {}
 
 
 def _add(key, slot, name, need=None, rows=(), pal=None, dx=0, dy=0, left=(), right=(), bridge=(), edge=(),
-         aura=None, auto=False):
+         aura=None, auto=False, season=None):
     ITEMS[key] = {"key": key, "slot": slot, "name": name, "need": need, "rows": list(rows), "pal": pal or {},
                   "dx": dx, "dy": dy, "left": list(left), "right": list(right), "bridge": [list(b) for b in bridge],
-                  "edge": [list(e) for e in edge], "aura": aura, "auto": auto}
+                  "edge": [list(e) for e in edge], "aura": aura, "auto": auto, "season": season}
 
 
 # ---------- голова ----------
@@ -93,7 +98,8 @@ _add("nightcap", "head", "Ночной колпак", rows=["......bbw", "..bbbb
      pal={"b": "#4a6fd0", "w": "#ffffff"}, auto=True)
 _add("umbrella", "head", "Зонтик", rows=["...rrrrrrrr...", "rrrrwrrrrwrrrr", ".......k......"],
      pal={"r": "#e5534b", "w": "#ffffff", "k": "#3a3a3a"}, auto=True)
-_add("santa", "head", "Шапка Санты", rows=["..rrrrrrww", "wwwwwwwwww"], pal={"r": "#e53935", "w": "#ffffff"}, auto=True)
+_add("santa", "head", "Шапка Санты", rows=["..rrrrrrww", "wwwwwwwwww"], pal={"r": "#e53935", "w": "#ffffff"},
+     season="newyear")
 
 # ---------- лицо ----------
 _add("glasses", "face", "Очки", "ride10", left=["", "mxmmm", ".mmm."], right=["", "mxmmm", ".mmm."],
@@ -192,7 +198,7 @@ _add("belly", "pattern", "Пузико", None, ["............", "............", 
                                            "...LLLLLL...", "...LLLLLL...", "....LLLL...."])
 _add("checker", "pattern", "Шахматка", 1, ["D.", ".D"])
 _add("camo", "pattern", "Камуфляж", 4, ["DD..LL..", "D..LLL.D", "..DD...D", "LL.DD.LL"])
-_add("heartsp", "pattern", "Сердечки", 2, [".p.p...", "ppppp..", ".ppp...", "..p....", "......."], {"p": "#ff6fa8"})
+_add("heartsp", "pattern", "Принт с сердечками", 2, [".p.p...", "ppppp..", ".ppp...", "..p....", "......."], {"p": "#ff6fa8"})
 _add("shadow", "pattern", "Закат", None, ["L", "L", ".", ".", "D", "D", "D"])
 _add("rainbow", "pattern", "Радуга", 6, ["r", "o", "y", "g", "b", "i", "v"],
      {"r": "#ef5350", "o": "#ff9f43", "y": "#ffd34d", "g": "#66d17a", "b": "#4fa8e8", "i": "#5c6bd6", "v": "#a66be0"})
@@ -223,6 +229,72 @@ _add("a_leaves", "aura", "Листопад", 4, aura={"shape": "rect", "colors":
                                              "fall": True})
 _add("a_ghost", "aura", "Призрачная дымка", "ghost5", aura={"shape": "oval", "colors": ["#c9ccd6", "#9aa0b0"], "every": 0.2})
 _add("a_zap", "aura", "Молнии", 12, aura={"shape": "text", "text": "ϟ", "colors": ["#ffe14a", "#9bd3ff"], "every": 0.3})
+
+
+# ---------- сезонное (открыто всегда — праздник можно устроить в любой день) ----------
+_add("pumpkinhat", "head", "Тыква на голову", rows=["....gg....", ".oooOoooo.", "ooyOooOyoo", "oOooyyoOoo", ".oooOoooo."],
+     pal={"o": "#f08a24", "O": "#c96a12", "y": "#ffd34d", "g": "#4f8a2e"}, dy=1, season="halloween")
+_add("ghostsuit", "pattern", "Костюм привидения", rows=["w"], pal={"w": "#eef0f6"}, season="halloween")
+_add("candybucket", "hand", "Ведёрко для сладостей", rows=[".kkk.", "k...k", "ooooo", "oyoyo", "ooooo"],
+     pal={"o": "#f08a24", "y": "#ffd34d", "k": "#3a2414"}, dx=-1, season="halloween")
+_add("a_pumpkin", "aura", "Тыквенная аура", aura={"shape": "rect", "colors": ["#8a4fd8", "#f08a24", "#ffb347"], "every": 0.25},
+     season="halloween")
+_add("antlers", "head", "Оленьи рога", rows=["b.b......b.b", ".bb......bb.", "..b......b.."], pal={"b": "#8b5a2b"},
+     season="newyear")
+_add("elf", "head", "Колпак эльфа", rows=["......ggy", "..ggggg..", "rrrrrrrr."], pal={"g": "#3fae5a", "y": "#ffd34d", "r": "#e5534b"},
+     season="newyear")
+_add("garland", "neck", "Гирлянда", rows=["kkkkkkkkkkkk", "r..y..b..g.."],
+     pal={"k": "#2f5f2a", "r": "#ff5a7a", "y": "#ffd34d", "b": "#6fb8ff", "g": "#8fcf6a"}, season="newyear")
+_add("gift", "hand", "Подарок", rows=["y...y", ".y.y.", "rryrr", "yyyyy", "rryrr"], pal={"r": "#e5534b", "y": "#ffd34d"},
+     dx=-1, season="newyear")
+_add("a_festive", "aura", "Праздничные огоньки", aura={"shape": "text", "text": "✦", "colors": ["#ff5a7a", "#ffd34d", "#6fb8ff",
+                                                                                         "#8fcf6a"], "every": 0.3},
+     season="newyear")
+_add("heartballoon", "hand", "Шарик-сердце", rows=["rr.rr", "rrrrr", ".rrr.", "..r..", "..k..", ".k...", "..k..", ".k..."],
+     pal={"r": "#ff4f6a", "k": "#cfcfcf"}, dx=-1, season="valentine")
+_add("cupid", "back", "Крылья купидона", rows=["pp................pp", "ppp..............ppp", ".ppp............ppp.",
+                                               "..pp............pp.."], pal={"p": "#ffb3cf"}, dy=-1, season="valentine")
+_add("easteregg", "hand", "Пасхальное яйцо", rows=[".ppp.", "pyyyp", "pbbbp", "pyyyp", ".ppp."],
+     pal={"p": "#ff9fc0", "y": "#ffd34d", "b": "#6fb8ff"}, dx=-1, season="spring")
+_add("a_petals", "aura", "Лепестки сакуры", aura={"shape": "rect", "colors": ["#ffb3cf", "#ff9fc0", "#ffffff"], "every": 0.25,
+                                                  "fall": True}, season="spring")
+_add("watermelon", "hand", "Арбуз", rows=["ggggg", "wwwww", "rkrkr", ".rrr.", "..r.."],
+     pal={"g": "#3fae5a", "w": "#e8f5d0", "r": "#ff5a6a", "k": "#1a1a1a"}, dx=-1, season="summer")
+_add("a_sun", "aura", "Солнечные зайчики", aura={"shape": "text", "text": "✦", "colors": ["#ffd34d", "#fff1a0", "#ffb347"],
+                                                 "every": 0.35}, season="summer")
+# подходящее из обычного гардероба тоже показываем в сезонном
+for _k, _s in {"witch": "halloween", "horns": "halloween", "bat": "halloween", "deviltail": "halloween",
+               "a_ghost": "halloween", "scarf": "newyear", "a_snow": "newyear", "hearts": "valentine",
+               "heartsp": "valentine", "a_hearts": "valentine", "bow": "valentine", "bunny": "spring", "wreath": "spring",
+               "flower": "spring", "butterfly": "spring", "sprout": "spring", "straw": "summer", "lei": "summer",
+               "icecream": "summer", "bucket": "summer"}.items():
+    ITEMS[_k]["season"] = _s
+
+
+# праздничные украшения рядом с Клодиком (пиксель-арт, буквы — цвета, «*» — мигающие огоньки)
+DECOR = {
+    "halloween": (["....gg......", "...gg.......", "..oOooOooO..", ".ooOooOooOo.", "oOyyOooOyyOo", "oOooOooOooOo",
+                   "oOoyyyyyyoOo", "oOooyOOyooOo", ".ooOooOooOo.", "..oOooOooO.."],
+                  {"g": "#4f8a2e", "o": "#f08a24", "O": "#c96a12", "y": "*"}),
+    "newyear": (["......S......", ".....SSS.....", "......G......", ".....GGG.....", "....G*GGG....", "...GGGG*GG...",
+                 "....GGGGG....", "...G*GGGGG...", "..GGGGG*GGG..", "...GGGGGGG...", "..GG*GGGG*G..", ".GGGGGG*GGGG.",
+                 "GGG*GGGGGG*GG", ".....TTT.....", ".....TTT....."],
+                {"S": "#ffd34d", "G": "#2f8f3a", "T": "#7a4a26"}),
+    "valentine": ([".RRR...RRR.", "RRWRR.RRRRR", "RWRRRRR*RRR", "RRRRRRRRRRR", "RRRR*RRRRRR", ".RRRRRRR*R.", "..RRRRRRR..",
+                   "...RRRRR...", "....RRR....", ".....R....."],
+                  {"R": "#ff4f6a", "W": "#ffb3c0"}),
+    "spring": (["..p...y..", ".ppp.yyy.", "..p*..y*.", "...g..g..", "....gg...", "..g.g.g..", "...ggg...", ".BBBBBBB.",
+                "..BBBBB..", "..BBBBB..", "...BBB..."],
+               {"p": "#ff6fa8", "y": "#ffd34d", "g": "#4f9a4f", "B": "#c96a3a"}),
+    "summer": (["....y....", ".y..y..y.", "..yyyyy..", ".yYYYYYy.", "yyY*YY*Yy", ".yYYYYYy.", "..yyyyy..", ".y..y..y.",
+                "....y...."],
+               {"y": "#ffd34d", "Y": "#ffb347"}),
+}
+DECOR_LIGHTS = {"halloween": ("#ffd34d", "#ff9a2e", "#ffe680"), "newyear": ("#ff5a7a", "#ffd34d", "#6fb8ff", "#8fcf6a"),
+                "valentine": ("#ffffff", "#ffd1dc", "#ff9fc0"), "spring": ("#fff1a0", "#ffffff", "#ffd34d"),
+                "summer": ("#ffffff", "#fff1a0", "#ff9f43")}
+# что можно поставить рядом с Клодиком (вкладка «Сезонное» на ПК и телефоне): auto — по календарю, none — ничего
+DECOR_NAMES = {"halloween": "Тыква", "newyear": "Ёлка", "valentine": "Сердце", "spring": "Цветок в горшке", "summer": "Солнце"}
 
 
 def shade(color, t):
@@ -363,6 +435,7 @@ def glow(px, cells, keys, phase, bounds):
 def for_ui():
     """Всё для окна настроек (без вещей, которые надеваются сами)."""
     return {"slots": [{"key": k, "name": n, "icon": i} for k, n, i in SLOTS],
+            "seasons": [{"key": k, "name": n, "icon": i} for k, n, i in SEASONS],
             "items": [it for it in ITEMS.values() if not it["auto"]]}
 
 
@@ -379,6 +452,7 @@ def _check():
                     assert ch in ".BDLE" or ch in it["pal"], (it["key"], ch)
         assert it["slot"] in SLOT_KEYS, it["key"]
         assert (it["aura"] is not None) == (it["slot"] == "aura"), it["key"]
+        assert it["season"] in (None, *[s for s, _, _ in SEASONS]), it["key"]
 
 
 _check()
