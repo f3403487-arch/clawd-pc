@@ -130,8 +130,19 @@
           cursor: pointer; clip-path: var(--px); flex-shrink: 0; transition: transform .05s, background .1s; }
   .send:hover { background: var(--accent); } .send:active { transform: translate(2px, 2px); }
 
-  .seg.accs { flex-wrap: wrap; }
-  .seg.accs button { flex: 0 0 auto; padding: 8px 12px; }
+  .seg.wslots { flex-wrap: wrap; }
+  .seg.wslots button { flex: 1 0 auto; padding: 8px 10px; }
+  .wgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; padding: 12px 14px 4px; }
+  .witem { position: relative; background: var(--bg); border: 0; padding: 6px 4px 7px; cursor: pointer; color: var(--sub);
+           font: inherit; font-size: 11.5px; line-height: 1.25; clip-path: var(--px); transition: transform .08s; }
+  .witem:hover { transform: translateY(-2px); color: var(--text); }
+  .witem.on { box-shadow: inset 0 0 0 3px var(--accent2); color: var(--text); background: #2b1f19; }
+  .witem canvas { display: block; margin: 0 auto 4px; image-rendering: pixelated; width: 84px; height: 66px; }
+  .witem.locked canvas { filter: grayscale(1) brightness(.45); }
+  .witem.locked { cursor: not-allowed; }
+  .witem i { position: absolute; top: 24px; left: 0; right: 0; text-align: center; font-style: normal; font-size: 18px; }
+  .witem .wn { display: block; min-height: 2.5em; }
+  .witem .need { display: block; font-size: 10.5px; color: var(--accent); opacity: .8; }
   .color.locked { filter: grayscale(.7) brightness(.55); cursor: not-allowed; }
   .color i { position: absolute; inset: 0; display: grid; place-items: center; font-style: normal; font-size: 16px; }
   .achcount { margin-left: auto; color: var(--sub); font-size: 13px; letter-spacing: 0; }
@@ -155,7 +166,7 @@
 </head>
 <body>
   <div class="hero">
-    <canvas id="pet" width="132" height="110" title="Погладь меня"></canvas>
+    <canvas id="pet" width="156" height="124" title="Погладь меня"></canvas>
     <div>
       <h1>Clawd</h1>
       <div class="status"><span class="dot" id="dot"></span><span id="status">на связи</span></div>
@@ -172,6 +183,7 @@
 
   <div class="tabs" id="tabs">
     <div class="tab on" data-page="petPage">Питомец</div>
+    <div class="tab" data-page="wardrobePage">Гардероб</div>
     <div class="tab" data-page="chatPage">Попросить</div>
     <div class="tab" data-page="aiPage">ИИ</div>
     <div class="tab" data-page="aboutPage">О Клодике</div>
@@ -179,16 +191,28 @@
   </div>
 
   <div class="pages">
-    <!-- Питомец -->
-    <div class="page on" id="petPage">
+    <!-- Гардероб: окрас и вся одежда -->
+    <div class="page" id="wardrobePage">
+      <div class="header">Гардероб <span class="achcount" id="wCount"></span></div>
+      <div class="group">
+        <div class="seg wslots" id="wSlots"></div>
+        <div class="wgrid" id="wGrid"></div>
+        <div class="actions">
+          <button class="btn" id="wRandom">🎲 Случайный образ</button>
+          <button class="btn ghost" id="wClear">Снять всё</button>
+        </div>
+      </div>
       <div class="header">Окрас</div>
       <div class="group"><div class="colors" id="colors"></div></div>
+      <div class="note">Одновременно — по одной вещи в каждом слоте. Закрытые открываются ачивками (вкладка «О Клодике»). Зонт в дождь, шарф в мороз и ночной колпак Клодик надевает сам поверх выбранного.</div>
+    </div>
+
+    <!-- Питомец -->
+    <div class="page on" id="petPage">
       <div class="header">Размер</div>
       <div class="group"><div class="seg" id="size">
         <button data-v="0">Маленький</button><button data-v="1">Обычный</button><button data-v="2">Большой</button>
       </div></div>
-      <div class="header">Аксессуар</div>
-      <div class="group"><div class="seg accs" id="accs"></div></div>
       <div class="header">Погода</div>
       <div class="group">
         <div class="field"><label>Город <span id="wNow"></span></label>
@@ -293,32 +317,117 @@ async function save(patch) {
   await api("/api/config", patch);
 }
 
+/* ---------- гардероб: тот же рисунок, что clawd_wardrobe.py ---------- */
+let W = { slots: [], items: {} }, openSet = new Set(), wSlot = "head";
+function shade(c, t) {
+  return "#" + [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16))
+    .map((v) => Math.round(t < 0 ? v * (1 + t) : v + (255 - v) * t).toString(16).padStart(2, "0")).join("");
+}
+function wColor(ch, pal, body, eye) {
+  return ch === "B" ? body : ch === "D" ? shade(body, -0.28) : ch === "L" ? shade(body, 0.32) : ch === "E" ? eye : pal[ch];
+}
+function wStamp(px, rows, pal, x0, y0, body, eye) {
+  rows.forEach((row, r) => {
+    for (let c = 0; c < row.length; c++) {
+      const col = row[c] === "." ? null : wColor(row[c], pal, body, eye);
+      if (col) px(x0 + c, y0 + r, x0 + c + 1, y0 + r + 1, col);
+    }
+  });
+}
+function wFill(px, a, b, y, ch, pal, body, eye) {
+  const col = b > a ? wColor(ch, pal, body, eye) : null;
+  if (col) px(a, y, b, y + 1, col);
+}
+function wDraw(px, keys, phase, gm, body, eye, handsFree) {
+  const { left, right, top, bottom, ey, look } = gm, mx = Math.floor((left + right) / 2);
+  const worn = keys.map((k) => W.items[k]).filter(Boolean);
+  const cx = (it) => mx - Math.floor(it.rows[0].length / 2) + it.dx;
+  if (phase === "back") {
+    for (const it of worn) if (it.slot === "back") wStamp(px, it.rows, it.pal, cx(it), top + it.dy, body, eye);
+    return;
+  }
+  if (phase === "pattern") {
+    for (const it of worn) {
+      if (it.slot !== "pattern") continue;
+      const h = it.rows.length, w = it.rows[0].length;
+      for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
+        const ch = it.rows[(y - top) % h][(x - left) % w], col = ch === "." ? null : wColor(ch, it.pal, body, eye);
+        if (col) px(x, y, x + 1, y + 1, col);
+      }
+    }
+    return;
+  }
+  const order = { face: 0, neck: 1, head: 2, hand: 3 };
+  for (const it of worn.filter((i) => i.slot in order).sort((a, b) => order[a.slot] - order[b.slot])) {
+    if (it.slot === "face") {
+      const lcx = left + 3 + look, rcx = right - 4 + look, y0 = ey - 1 + it.dy;
+      wStamp(px, it.left, it.pal, lcx - 2, y0, body, eye);
+      wStamp(px, it.right, it.pal, rcx - 2, y0, body, eye);
+      for (const [row, ch] of it.bridge) wFill(px, lcx + 3, rcx - 2, y0 + row, ch, it.pal, body, eye);
+      for (const [row, ch] of it.edge) {
+        wFill(px, left, lcx - 2, y0 + row, ch, it.pal, body, eye);
+        wFill(px, rcx + 3, right, y0 + row, ch, it.pal, body, eye);
+      }
+    } else if (it.slot === "neck") wStamp(px, it.rows, it.pal, cx(it), top + 5 + it.dy, body, eye);
+    else if (it.slot === "head") wStamp(px, it.rows, it.pal, cx(it), top - it.rows.length + it.dy, body, eye);
+    else if (it.slot === "hand" && handsFree) wStamp(px, it.rows, it.pal, right + 1 + it.dx, top + 5 - it.rows.length + it.dy, body, eye);
+  }
+}
+/* Клодик в позе «стоит» — для шапки окна и карточек гардероба */
+function drawClawd(g, s, ox, oy, o) {
+  const px = (x0, y0, x1, y1, c) => { g.fillStyle = c; g.fillRect(ox + x0 * s, oy + y0 * s, (x1 - x0) * s, (y1 - y0) * s); };
+  const B = o.body, E = o.eye, keys = o.keys || [], gm = { left: 3, right: 15, top: 3, bottom: 10, ey: 5, look: 0 };
+  wDraw(px, keys, "back", gm, B, E);
+  for (const c of [4, 6, 11, 13]) px(c, 10, c + 1, 10 + (o.legs || 2), B);
+  if (o.happy) { px(1, 2, 2, 6, B); px(2, 5, 3, 6, B); px(16, 2, 17, 6, B); px(15, 5, 16, 6, B); }
+  else { px(1, 6, 3, 8, B); px(15, 6, 17, 8, B); }
+  px(3, 3, 15, 10, B);
+  wDraw(px, keys, "pattern", gm, B, E);
+  for (const cx of [6, 11]) {
+    if (o.happy) { px(cx - 1, 6, cx, 7, E); px(cx, 5, cx + 1, 6, E); px(cx + 1, 6, cx + 2, 7, E); }
+    else if (o.blink) px(cx, 6, cx + 1, 7, E);
+    else px(cx, 5, cx + 1, 7, E);
+  }
+  if (o.happy) { px(4, 7, 6, 8, "#ec6268cc"); px(12, 7, 14, 8, "#ec6268cc"); }
+  wDraw(px, keys, "front", gm, B, E, !o.happy);
+}
+function petColor() { return (cfg.colors || [])[cfg.color || 0] || { body: "#d97757", eye: "#1a1a1a" }; }
+function wearing() { return W.slots.map((s) => cfg[s.key]).filter((k) => k && W.items[k] && openSet.has(k)); }
+
 /* ---------- живой Клодик в шапке (тот же спрайт, что на экране) ---------- */
 const pet = $("pet"), g = pet.getContext("2d");
 let blinkUntil = 0, nextBlink = performance.now() + 2000, happyUntil = 0, hopV = 0, hop = 0, lastT = performance.now();
+let motes = [], nextMote = 0;
 function drawPet(t) {
   const dt = Math.min(0.05, (t - lastT) / 1000); lastT = t;
   if (t > nextBlink) { blinkUntil = t + 140; nextBlink = t + 2500 + Math.random() * 3000; }
   if (hopV || hop > 0) { hop += hopV * dt; hopV -= 900 * dt; if (hop <= 0) { hop = 0; hopV = 0; } }
-  const color = (cfg.colors || [])[cfg.color || 0] || { body: "#d97757", eye: "#1a1a1a" };
+  const color = petColor();
   const s = 6, ox = (pet.width - 18 * s) / 2, bob = Math.sin(t / 600) * 1.5;
   const oy = pet.height - 13 * s - 4 - hop + bob;
   g.clearRect(0, 0, pet.width, pet.height);
   g.fillStyle = "rgba(0,0,0,.35)";
   g.beginPath(); g.ellipse(pet.width / 2, pet.height - 4, 34 - hop / 3, 4, 0, 0, Math.PI * 2); g.fill();
-  const px = (x0, y0, x1, y1, c) => { g.fillStyle = c; g.fillRect(ox + x0 * s, oy + y0 * s, (x1 - x0) * s, (y1 - y0) * s); };
-  const B = color.body, E = color.eye;
-  const happy = t < happyUntil, legs = hop > 4 ? 3 : 2;
-  for (const c of [4, 6, 11, 13]) px(c, 10, c + 1, 10 + legs, B);
-  if (happy) { px(1, 2, 2, 6, B); px(2, 5, 3, 6, B); px(16, 2, 17, 6, B); px(15, 5, 16, 6, B); }
-  else { px(1, 6, 3, 8, B); px(15, 6, 17, 8, B); }
-  px(3, 3, 15, 10, B);
-  for (const cx of [6, 11]) {
-    if (happy) { px(cx - 1, 6, cx, 7, E); px(cx, 5, cx + 1, 6, E); px(cx + 1, 6, cx + 2, 7, E); }
-    else if (t < blinkUntil) px(cx, 6, cx + 1, 7, E);
-    else px(cx, 5, cx + 1, 7, E);
+  // аура: частицы всплывают за спиной
+  const aura = W.items[cfg.aura] && openSet.has(cfg.aura) ? W.items[cfg.aura].aura : null;
+  if (aura && t > nextMote) {
+    nextMote = t + aura.every * 1000 * (0.6 + Math.random() * 0.8);
+    motes.push({ x: pet.width / 2 + (Math.random() - 0.5) * 70, y: oy + 20 + Math.random() * 40, t0: t, a: aura,
+                 c: aura.colors.length ? aura.colors[Math.floor(Math.random() * aura.colors.length)] : "#ff6fa8",
+                 ch: aura.shape === "heart" ? "♥" : aura.text ? aura.text[Math.floor(Math.random() * aura.text.length)] : "" });
   }
-  if (happy) { px(4, 7, 6, 8, "#ec6268cc"); px(12, 7, 14, 8, "#ec6268cc"); }
+  motes = motes.filter((m) => t - m.t0 < 1300);
+  for (const m of motes) {
+    const age = (t - m.t0) / 1300, y = m.a.fall ? m.y - 40 + age * 60 : m.y - (1 - (1 - age) ** 2) * 50;
+    g.globalAlpha = 1 - age;
+    g.fillStyle = m.c; g.strokeStyle = m.c;
+    if (m.ch) { g.font = "bold 12px Segoe UI"; g.fillText(m.ch, m.x, y); }
+    else if (m.a.shape === "ring") { g.beginPath(); g.arc(m.x, y, 2.5, 0, Math.PI * 2); g.stroke(); }
+    else g.fillRect(m.x, y, 4, 4);
+  }
+  g.globalAlpha = 1;
+  drawClawd(g, s, ox, oy, { body: color.body, eye: color.eye, keys: wearing(), happy: t < happyUntil,
+                            blink: t < blinkUntil, legs: hop > 4 ? 3 : 2 });
   requestAnimationFrame(drawPet);
 }
 requestAnimationFrame(drawPet);
@@ -364,10 +473,10 @@ function render() {
     const b = document.createElement("button");
     b.className = "color" + (i === cfg.color ? " on" : "") + (c.locked ? " locked" : "");
     b.style.background = c.body; b.style.setProperty("--eye", c.eye);
-    b.title = c.locked ? c.name + " — откроется за ачивку «" + c.need + "»" : c.name;
+    b.title = c.locked ? c.name + " — откроется: " + c.need : c.name;
     b.innerHTML = c.locked ? "<i>🔒</i>" : "<span></span>";
     b.onclick = async () => {
-      if (c.locked) { toast("🔒 " + c.name + ": ачивка «" + c.need + "»"); return; }
+      if (c.locked) { toast("🔒 " + c.name + ": " + c.need); return; }
       await save({ color: i }); render(); happyUntil = performance.now() + 1200; hopV = 220; toast(c.name);
     };
     colors.appendChild(b);
@@ -433,6 +542,7 @@ function render() {
     sw.classList.toggle("on", r.on); cfg.autostart = r.on;
     toast(r.on ? "Будет запускаться сам" : "Автозапуск выключен");
   }).classList.toggle("on", !!cfg.autostart);
+  renderWardrobe(true);
   moveInk();
 }
 
@@ -464,24 +574,88 @@ $("testAi").onclick = async () => {
 };
 $("saveCity").onclick = async () => { await save({ city: $("city").value.trim() }); toast("Запомнил город 🌤"); };
 $("savePhone").onclick = async () => { await save({ phone_code: $("phoneCode").value.trim() }); toast("Код сохранён 📱"); };
-let accKey = "";
-function renderAccs(list) {
-  const key = list.map((a) => a.key + a.open).join() + cfg.acc;
-  if (key === accKey) return;
-  accKey = key;
-  const box = $("accs"); box.innerHTML = "";
-  for (const a of [{ key: "", name: "Без", open: true }, ...list]) {
+/* ---------- гардероб: вкладки по слотам и карточки с превью ---------- */
+function setWardrobe(c) {
+  if (c.wardrobe) {
+    W = { slots: c.wardrobe.slots, items: {} };
+    for (const it of c.wardrobe.items) W.items[it.key] = it;
+  }
+  if (c.open) openSet = new Set(c.open);
+}
+function itemPreview(it) {
+  const cv = document.createElement("canvas");
+  cv.width = 84; cv.height = 66;
+  const cg = cv.getContext("2d"), color = petColor(), s = 3;
+  const ox = cv.width / 2 - 9 * s, oy = cv.height - 13 * s - 4;
+  cg.fillStyle = "rgba(0,0,0,.3)";
+  cg.beginPath(); cg.ellipse(cv.width / 2, cv.height - 4, 17, 2.5, 0, 0, Math.PI * 2); cg.fill();
+  if (it.slot === "aura") {
+    // ауру показываем застывшими частицами вокруг
+    const a = it.aura, spots = [[14, 20], [66, 16], [22, 40], [62, 38], [40, 8], [8, 30], [74, 28]];
+    spots.forEach(([x, y], i) => {
+      const c = a.colors.length ? a.colors[i % a.colors.length] : "#ff6fa8";
+      cg.fillStyle = c; cg.strokeStyle = c;
+      if (a.shape === "heart" || a.text) { cg.font = "bold 11px Segoe UI"; cg.fillText(a.shape === "heart" ? "♥" : a.text[i % a.text.length], x, y); }
+      else if (a.shape === "ring") { cg.beginPath(); cg.arc(x, y, 2.5, 0, Math.PI * 2); cg.stroke(); }
+      else cg.fillRect(x, y, 4, 4);
+    });
+  }
+  drawClawd(cg, s, ox, oy, { body: color.body, eye: color.eye, keys: it.slot === "aura" ? [] : [it.key] });
+  return cv;
+}
+let wKey = "";
+function renderWardrobe(force) {
+  const key = wSlot + "|" + [...openSet].join() + "|" + W.slots.map((s) => cfg[s.key]).join() + "|" + cfg.color;
+  if (key === wKey && !force) return;
+  wKey = key;
+  const all = Object.values(W.items);
+  $("wCount").textContent = `${all.filter((i) => openSet.has(i.key)).length} / ${all.length}`;
+  const tabs = $("wSlots"); tabs.innerHTML = "";
+  for (const s of W.slots) {
     const b = document.createElement("button");
-    b.textContent = (a.open ? "" : "🔒 ") + a.name;
-    b.className = (cfg.acc || "") === a.key ? "on" : "";
-    b.title = a.open ? a.name : "Откроется за ачивку «" + a.need + "»";
+    b.textContent = s.icon + " " + s.name + (cfg[s.key] ? " •" : "");
+    b.className = s.key === wSlot ? "on" : "";
+    b.onclick = () => { wSlot = s.key; renderWardrobe(); };
+    tabs.appendChild(b);
+  }
+  const grid = $("wGrid"); grid.innerHTML = "";
+  // сначала открытые, потом по тому, что раньше откроется
+  const rank = (it) => openSet.has(it.key) ? -1 : typeof it.need === "number" ? it.need : 99;
+  const list = all.filter((it) => it.slot === wSlot).sort((a, b) => rank(a) - rank(b));
+  for (const it of list) {
+    const open = openSet.has(it.key), on = cfg[wSlot] === it.key;
+    const b = document.createElement("button");
+    b.className = "witem" + (on ? " on" : "") + (open ? "" : " locked");
+    b.title = open ? it.name : it.name + " — откроется: " + it.need_text;
+    b.appendChild(itemPreview(it));
+    const n = document.createElement("span"); n.className = "wn"; n.textContent = it.name; b.appendChild(n);
+    if (!open) {
+      const lock = document.createElement("i"); lock.textContent = "🔒"; b.appendChild(lock);
+      const need = document.createElement("span"); need.className = "need"; need.textContent = it.need_text; b.appendChild(need);
+    }
     b.onclick = async () => {
-      if (!a.open) { toast("🔒 " + a.name + ": ачивка «" + a.need + "»"); return; }
-      await save({ acc: a.key }); accKey = ""; renderAccs(list); happyUntil = performance.now() + 1000; hopV = 200;
+      if (!open) { toast("🔒 " + it.name + ": " + it.need_text); return; }
+      await save({ [wSlot]: on ? "" : it.key });
+      renderWardrobe(); happyUntil = performance.now() + 1000; hopV = 220;
+      if (!on) toast(it.name);
     };
-    box.appendChild(b);
+    grid.appendChild(b);
   }
 }
+$("wRandom").onclick = async () => {
+  const patch = {};
+  for (const s of W.slots) {
+    const opts = Object.values(W.items).filter((i) => i.slot === s.key && openSet.has(i.key));
+    // не всё сразу: каждый слот с шансом, чтобы образы были разные
+    patch[s.key] = opts.length && Math.random() < 0.65 ? opts[Math.floor(Math.random() * opts.length)].key : "";
+  }
+  await save(patch); renderWardrobe(); happyUntil = performance.now() + 1500; hopV = 280; toast("Новый образ 🎲");
+};
+$("wClear").onclick = async () => {
+  const patch = {};
+  for (const s of W.slots) patch[s.key] = "";
+  await save(patch); renderWardrobe(); toast("Снял всё");
+};
 $("saveMe").onclick = async () => {
   await save({ name: $("name").value.trim(), about: $("about").value.trim() });
   $("meResult").className = "result ok"; $("meResult").textContent = "✅ запомнил";
@@ -563,7 +737,7 @@ function renderAch(list) {
       (a.done ? "" : ` · ${a.value}/${a.goal}`);
     box.appendChild(el);
   }
-  if (fresh) { toast("🏆 Новая ачивка!"); api("/api/config").then((c) => { cfg = c; render(); }); }
+  if (fresh) { toast("🏆 Новая ачивка!"); api("/api/config").then((c) => { cfg = c; setWardrobe(c); render(); }); }
 }
 
 /* ---------- статус ---------- */
@@ -579,7 +753,11 @@ async function poll() {
     $("sAsks").textContent = st.asks || 0;
     $("sDays").textContent = st.since ? Math.max(1, Math.ceil((Date.now() / 1000 - st.since) / 86400)) : 1;
     renderAch(s.ach || []);
-    renderAccs(s.accs || []);
+    if (s.open && s.open.join() !== [...openSet].join()) { openSet = new Set(s.open); renderWardrobe(); }
+    if (s.colors_open && cfg.colors && s.colors_open.join() !==
+        cfg.colors.map((c, i) => c.locked ? -1 : i).filter((i) => i >= 0).join()) {
+      cfg.colors.forEach((c, i) => c.locked = !s.colors_open.includes(i)); render();
+    }
     $("wNow").textContent = s.weather ? "· сейчас " + s.weather : "";
     $("phoneState").textContent = cfg.phone_code ? (s.phone_ok ? "🟢 на связи" : "⚪ не на связи") : "";
   } catch (e) {
@@ -588,6 +766,7 @@ async function poll() {
 }
 (async () => {
   cfg = await api("/api/config");
+  setWardrobe(cfg);
   render();
   const tab = document.querySelector('.tab[data-page="' + location.hash.slice(1) + '"]');
   if (tab) {

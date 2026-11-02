@@ -23,6 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import clawd_agent
 import clawd_extras
+import clawd_wardrobe as W
 
 PORT = 8767
 S = 5  # размер пикселя
@@ -117,8 +118,19 @@ COLORS = [
     # открываются ачивками
     ("Золотой", "#e8b84a", "#2a1e05"), ("Лаймовый", "#9bd45a", "#16240a"), ("Призрак", "#e9ecf2", "#3a3a44"),
     ("Ночной", "#2e3a6e", "#f2f2f2"),
+    # новые: часть открыта сразу, часть — за число ачивок (COLOR_NEED) или за конкретную (COLOR_ACH)
+    ("Вишнёвый", "#c2405a", "#1a0a10"), ("Апельсин", "#f28a2e", "#2a1405"), ("Банан", "#f2d04a", "#2a2205"),
+    ("Изумруд", "#2fa36b", "#08201a"), ("Бирюза", "#2bc4c4", "#062424"), ("Персик", "#f5b08a", "#2a160c"),
+    ("Шоколад", "#7a4a2e", "#f2e6dc"), ("Снежный", "#ffffff", "#1a1a2a"), ("Сапфир", "#3156c9", "#f2f2f2"),
+    ("Сирень", "#c08ae8", "#22142e"), ("Фуксия", "#e04fb0", "#2a0a20"), ("Кофе с молоком", "#b08a6a", "#24180f"),
+    ("Песок", "#d9c08a", "#2a2010"), ("Морской", "#1f7a8c", "#e8fbff"), ("Клубника", "#ff5a7a", "#ffffff"),
+    ("Оливка", "#8a9a3a", "#16180a"), ("Ледяной", "#bfe8ff", "#1a3a5a"), ("Розовое золото", "#e6a89a", "#3a1a14"),
+    ("Мята-шоколад", "#a6e6c8", "#4a2a1a"), ("Тыква", "#ff8c1a", "#1a0f05"), ("Уголь", "#26262c", "#ff5a5a"),
+    ("Неон", "#39ff8a", "#06200f"), ("Кибер", "#00e5ff", "#1a0033"), ("Лава", "#ff4a1a", "#ffe14a"),
 ]
-COLOR_ACH = {6: "pet100", 7: "ask50", 8: "clean10", 9: "game10"}
+COLOR_ACH = {6: "pet100", 7: "ask50", 8: "clean10", 9: "game10", 30: "days100", 31: "pet500", 32: "game50", 33: "style10"}
+COLOR_FREE = 16  # окрасы 0–5 и 10–15 открыты сразу
+COLOR_NEED = {16: 1, 17: 2, 18: 3, 19: 4, 20: 5, 21: 6, 22: 7, 23: 8, 24: 9, 25: 10, 26: 11, 27: 12, 28: 14, 29: 16}
 
 # (id, значок, название, описание, счётчик, цель)
 ACHIEVEMENTS = [
@@ -136,6 +148,16 @@ ACHIEVEMENTS = [
     ("days30", "🎂", "Месяц вместе", "30 дней с Клодиком", "days", 30),
     ("candy20", "🍬", "Сладкоежка", "Собери 20 конфет из тыквы", "candies", 20),
     ("ghost5", "👻", "Охотник за привидениями", "Поймай 5 призраков", "ghosts", 5),
+    ("style10", "👗", "Модник", "Примерь 10 разных вещей из гардероба", "tried", 10),
+    ("style40", "💅", "Икона стиля", "Примерь 40 разных вещей", "tried", 40),
+    ("pet500", "🫂", "Обнимашки", "Погладь 500 раз", "pets", 500),
+    ("ask100", "🧠", "Мозговой центр", "100 просьб", "asks", 100),
+    ("throw100", "🚀", "Космодром", "Брось Клодика 100 раз", "throws", 100),
+    ("ride50", "🌊", "Король волн", "50 поездок на окнах", "rides", 50),
+    ("clean30", "🧽", "Генеральная уборка", "Убери 30 кучек", "cleaned", 30),
+    ("file50", "🚚", "Логистика", "Клодик перенёс 50 файлов", "files", 50),
+    ("game50", "🕹", "Киберспортсмен", "Клодик 50 раз уходил в портал", "games", 50),
+    ("days100", "💯", "Сто дней", "100 дней с Клодиком", "days", 100),
 ]
 POOP = ["....X....", "...XXo...", "..XXXXX..", ".XXXXXXo.", ".XwkXwkX.", "XXXXXXXXo", "XXXXXXXXX"]
 POOP_COLORS = {"X": "#8a5a33", "o": "#b27d4e", "w": "#ffffff", "k": "#1a1a1a"}
@@ -151,18 +173,51 @@ def ach_list():
     for k in ("pets", "cleaned", "throws"):
         stats[k] = int(stats.get(k, 0)) + int(ph.get(k, 0) or 0)
     stats["days"] = max(stats["days"], int(ph.get("days", 0) or 0))
-    done = set(CFG.get("ach", [])) | (set(ph.get("ach") or []) & {a[0] for a in ACHIEVEMENTS})
+    done = ach_done()
     reward = {v: COLORS[k][0] for k, v in COLOR_ACH.items()}
     return [{"id": a, "icon": ic, "title": t, "desc": d, "value": min(int(stats.get(k, 0)), goal), "goal": goal,
              "done": a in done, "reward": reward.get(a)} for a, ic, t, d, k, goal in ACHIEVEMENTS]
 
 
-def color_open(i):
-    return i < 6 or COLOR_ACH.get(i) in CFG.get("ach", [])
+def ach_done():
+    """Полученные ачивки: свои + с телефона (общие)."""
+    ph = CFG.get("phone_stats") or {}
+    return set(CFG.get("ach", [])) | (set(ph.get("ach") or []) & {a[0] for a in ACHIEVEMENTS})
+
+
+def need_open(need, done=None):
+    """Замок вещи или окраса: None — открыт, "id" — нужна ачивка, число — сколько ачивок всего."""
+    if need is None:
+        return True
+    done = ach_done() if done is None else done
+    return len(done) >= need if isinstance(need, int) else need in done
+
+
+def need_text(need):
+    if need is None:
+        return ""
+    if isinstance(need, int):
+        return f"{need} {'ачивка' if need == 1 else 'ачивки' if need < 5 else 'ачивок'}"
+    return "ачивка «" + next((t for a, _, t, *_ in ACHIEVEMENTS if a == need), need) + "»"
+
+
+def color_need(i):
+    if i < 6 or 10 <= i < COLOR_FREE:
+        return None
+    return COLOR_ACH.get(i) or COLOR_NEED.get(i)
+
+
+def color_open(i, done=None):
+    return 0 <= i < len(COLORS) and need_open(color_need(i), done)
+
+
+def item_open(key, done=None):
+    it = W.ITEMS.get(key)
+    return bool(it) and (it["auto"] or need_open(it["need"], done))
 DEFAULTS = {
     "color": 0, "size": 1, "wander": True, "phrases": True, "cursor": True, "ride": True, "react": True,
     "dance": True, "portal": True, "break": True, "poop": True, "watch_ai": True, "game_peek": True,
-    "acc": "", "city": "", "weather": True, "night": True, "morning": True, "clip": True, "errors_help": True,
+    "acc": "", "head": "", "face": "", "neck": "", "hand": "", "back": "", "pattern": "", "aura": "", "city": "", "weather": True, "night": True, "morning": True, "clip": True, "errors_help": True,
     "voice": True, "phone_link": True, "phone_code": "", "notify_pc": True,
     "music_ai": True, "calls": True, "season": True, "evening": True,
     "ai_provider": "claude", "ai_key": "", "ai_model": "", "ai_url": "", "name": "", "about": "",
@@ -178,6 +233,10 @@ APP_LABELS = {
 def load_cfg():
     cfg = dict(DEFAULTS)
     cfg.update(clawd_agent.load_config())
+    # раньше был один аксессуар — переезжает в свой слот гардероба
+    old = W.ITEMS.get(cfg.get("acc") or "")
+    if old and not any(cfg.get(s) for s in W.SLOT_KEYS):
+        cfg[old["slot"]] = old["key"]
     return cfg
 
 
@@ -196,9 +255,10 @@ def bump_stat(key):
         pass
 
 
-def open_settings():
-    """Окно настроек: Edge в режиме приложения (без адресной строки), иначе обычный браузер."""
-    url = f"http://127.0.0.1:{PORT}/ui"
+def open_settings(page=""):
+    """Окно настроек: Edge в режиме приложения (без адресной строки), иначе обычный браузер.
+    page — сразу открыть вкладку (например wardrobePage)."""
+    url = f"http://127.0.0.1:{PORT}/ui" + (f"#{page}" if page else "")
     for edge in (r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
                  r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"):
         if os.path.exists(edge):
@@ -437,20 +497,6 @@ def classify(exe, title):
     return None, None, None
 
 
-# аксессуары как в приложении: (ключ, название, ачивка-замок или None — открыт сразу)
-ACCESSORIES = [
-    ("bow", "Бантик", "pet10"), ("party", "Колпак", "ask10"), ("glasses", "Очки", "ride10"),
-    ("phones", "Наушники", "file10"), ("eyepatch", "Пиратская повязка", "throw20"), ("flower", "Цветок", "days7"),
-    ("crown", "Корона", "pet100"), ("halo", "Нимб", "days30"),
-]
-HEAD_ACC = {"bow", "party", "crown", "nightcap", "umbrella", "halo", "flower", "santa"}
-ACC_COLORS = {
-    "bow": ("#ff6fa8", "#d94c88"), "party": ("#6fb8ff", "#ffc94d"), "glasses": ("#1a1a1a", "#5e6670"),
-    "phones": ("#3a3a3a", "#5e6670"), "crown": ("#ffc94d", "#ff5c7a"), "nightcap": ("#4a6fd0", "#ffffff"),
-    "umbrella": ("#e5534b", "#3a3a3a"), "scarf": ("#e5534b", "#ffc94d"), "flower": ("#ff6fa8", "#ffc94d"),
-    "eyepatch": ("#141414", "#141414"), "halo": ("#ffe08a", "#ffc94d"), "santa": ("#e53935", "#ffffff"),
-}
-
 # праздничные украшения рядом с Клодиком (пиксель-арт, буквы — цвета, «*» — мигающие огоньки)
 DECOR = {
     "halloween": (["....gg......", "...gg.......", "..oOooOooO..", ".ooOooOooOo.", "oOyyOooOyyOo", "oOooOooOooOo",
@@ -462,89 +508,6 @@ DECOR = {
                 {"S": "#ffd34d", "G": "#2f8f3a", "T": "#7a4a26"}),
 }
 DECOR_LIGHTS = {"halloween": ("#ffd34d", "#ff9a2e", "#ffe680"), "newyear": ("#ff5a7a", "#ffd34d", "#6fb8ff", "#8fcf6a")}
-
-
-def draw_acc(px, acc, left, right, top, ey, look):
-    """Тот же рисунок аксессуаров, что Sprite.drawAccessory в приложении."""
-    if acc not in ACC_COLORS:
-        return
-    main, extra = ACC_COLORS[acc]
-    mx = (left + right) // 2
-    if acc == "bow":
-        x0 = right - 5
-        px(x0, top - 2, x0 + 1, top - 1, main)
-        px(x0 + 3, top - 2, x0 + 4, top - 1, main)
-        px(x0, top - 1, x0 + 4, top, main)
-        px(x0 + 1, top - 1, x0 + 3, top, extra)
-    elif acc == "party":
-        px(mx - 2, top - 1, mx + 2, top, main)
-        px(mx - 1, top - 2, mx + 1, top - 1, extra)
-        px(mx - 1, top - 3, mx + 1, top - 2, "#ffffff")
-    elif acc == "crown":
-        px(left + 3, top - 1, right - 3, top, main)
-        px(left + 3, top - 2, left + 4, top - 1, main)
-        px(mx - 1, top - 2, mx + 1, top - 1, main)
-        px(right - 4, top - 2, right - 3, top - 1, main)
-        px(mx - 1, top - 1, mx + 1, top, extra)
-    elif acc == "phones":
-        px(left + 1, top - 1, right - 1, top, main)
-        px(left - 1, top + 1, left + 1, top + 4, extra)
-        px(right - 1, top + 1, right + 1, top + 4, extra)
-    elif acc == "nightcap":
-        px(left + 2, top - 1, right - 2, top, main)
-        px(left + 4, top - 2, right - 3, top - 1, main)
-        px(right - 4, top - 3, right - 2, top - 2, main)
-        px(right - 2, top - 3, right - 1, top - 2, extra)
-        px(left + 2, top - 1, left + 3, top, extra)
-    elif acc == "umbrella":
-        px(left + 2, top - 3, right - 2, top - 2, main)
-        px(left - 1, top - 2, right + 1, top - 1, main)
-        px(left + 3, top - 2, left + 4, top - 1, "#ffffff")
-        px(right - 4, top - 2, right - 3, top - 1, "#ffffff")
-        px(mx, top - 1, mx + 1, top, extra)
-    elif acc == "scarf":
-        px(left, top + 5, right, top + 6, main)
-        for cx in range(left + 1, right, 3):
-            px(cx, top + 5, cx + 1, top + 6, extra)
-        px(right - 3, top + 6, right - 2, top + 8, main)
-        px(right - 2, top + 6, right - 1, top + 7, extra)
-    elif acc == "flower":
-        px(right - 2, top - 2, right - 1, top - 1, main)
-        px(right - 3, top - 1, right - 2, top, main)
-        px(right - 1, top - 1, right, top, main)
-        px(right - 2, top, right - 1, top + 1, main)
-        px(right - 2, top - 1, right - 1, top, extra)
-    elif acc == "eyepatch":
-        rcx = right - 4 + look
-        px(rcx - 1, ey - 1, rcx + 2, ey + 2, main)
-        if rcx - 1 > left:
-            px(left, ey - 1, rcx - 1, ey, main)
-        if right > rcx + 2:
-            px(rcx + 2, ey - 1, right, ey, main)
-    elif acc == "santa":
-        px(left + 1, top - 1, right - 1, top, extra)
-        px(left + 3, top - 2, right - 3, top - 1, main)
-        px(right - 3, top - 2, right - 1, top - 1, extra)
-    elif acc == "halo":
-        px(mx - 3, top - 3, mx + 3, top - 2, main)
-        px(mx - 4, top - 2, mx - 3, top - 1, extra)
-        px(mx + 3, top - 2, mx + 4, top - 1, extra)
-    elif acc == "glasses":
-        lcx, rcx = left + 3 + look, right - 4 + look
-        for cx in (lcx, rcx):
-            px(cx - 1, ey, cx + 2, ey + 2, main)
-            px(cx - 1, ey, cx, ey + 1, extra)
-        if rcx - 1 > lcx + 2:
-            px(lcx + 2, ey, rcx - 1, ey + 1, main)
-        if lcx - 1 > left:
-            px(left, ey, lcx - 1, ey + 1, main)
-        if right > rcx + 2:
-            px(rcx + 2, ey, right, ey + 1, main)
-
-
-def acc_open(key):
-    need = {k: a for k, _, a in ACCESSORIES}.get(key)
-    return need is None or need in CFG.get("ach", [])
 
 
 def pet_image(eyes="open", legs="stand", arms="normal", squash=0, look=0, mouth="", blush=False, carry=False, flip=False, acc=()):
@@ -566,6 +529,9 @@ def pet_image(eyes="open", legs="stand", arms="normal", squash=0, look=0, mouth=
         top += 1
         bottom += 1
     heights = {"walk1": (1, 2, 1, 2), "walk2": (2, 1, 2, 1), "dangle": (3, 3, 3, 3), "tuck": (1, 1, 1, 1)}.get(legs, (2, 2, 2, 2))
+    ey = top + 2
+    geo = (left, right, top, bottom, ey, look, BODY, EYE)
+    W.draw(px, acc, "back", *geo)  # крылья и плащ — за телом
     for c, hh in zip((left + 1, left + 3, right - 4, right - 2), heights):
         px(c, bottom, c + 1, bottom + hh, BODY)
 
@@ -586,8 +552,8 @@ def pet_image(eyes="open", legs="stand", arms="normal", squash=0, look=0, mouth=
     arm(-1, la)
     arm(1, "up" if carry else ra)
     px(left, top, right, bottom, BODY)
+    W.draw(px, acc, "pattern", *geo)
 
-    ey = top + 2
     for side, cx in ((-1, left + 3 + look), (1, right - 4 + look)):
         if eyes == "blink":
             px(cx, ey + 1, cx + 1, ey + 2, EYE)
@@ -611,11 +577,11 @@ def pet_image(eyes="open", legs="stand", arms="normal", squash=0, look=0, mouth=
                 px(cx - 2, ey + 2, cx, ey + 3, BLUSH)
             else:
                 px(cx + 1, ey + 2, cx + 3, ey + 3, BLUSH)
-    for a in acc:
-        draw_acc(px, a, left, right, top, ey, look)
     if mouth:
         mx, my = (left + right) // 2, ey + 2
         px(mx - 1, my, mx + 1, my + (2 if mouth == "open" else 1), EYE)
+    # в поднятой лапе (тащат или несёт листок) вещь не держит
+    W.draw(px, acc, "front", *geo, hands_free=not carry and arms != "up")
     if carry:
         # листок с загнутым уголком над поднятой рукой
         px(right, top - 5, right + 4, top - 1, PAPER)
@@ -1092,6 +1058,7 @@ class Clawd:
         self.break_said = -1e9
         self.slept_at = 0.0
         self.dance_next = 0.0
+        self.next_aura = 0.0
         self.look_cursor = 0
         self.last_cursor = None
         self.hover_px = 0.0
@@ -1164,6 +1131,7 @@ class Clawd:
         self.menu.add_command(label="Объясни область…  (Ctrl+Alt+S)", command=self.select_region)
         self.menu.add_command(label="Итоги дня", command=self.day_report)
         self.menu.add_command(label="Настройки…", command=open_settings)
+        self.menu.add_command(label="Гардероб…", command=lambda: open_settings("wardrobePage"))
         self.menu.add_separator()
         self.menu.add_command(label="Позвать в центр", command=self.come_center)
         self.menu.add_command(label="Уложить спать", command=self.go_sleep)
@@ -1273,6 +1241,45 @@ class Clawd:
             item = self.cv.create_text(ox, oy, text="z", fill=ZZZ, font=("Segoe UI", 11, "bold"))
         self.particles.append({"item": item, "x": ox, "y": oy, "vx": random.uniform(-25, 25),
                                "t": time.monotonic(), "life": 1.3, "kind": kind})
+
+    def aura_tick(self, now):
+        """Аура из гардероба: частицы вокруг Клодика, чаще — когда он бегает."""
+        it = W.ITEMS.get(CFG.get("aura") or "")
+        if not it or it["slot"] != "aura" or now < self.next_aura or self.hidden or self.portal or self.away:
+            return
+        if not item_open(it["key"]):
+            return
+        spec = it["aura"]
+        moving = self.mode in ("walk", "run", "fall", "drag") or self.hop > 6
+        self.next_aura = now + spec["every"] * random.uniform(0.6, 1.4) * (0.6 if moving else 1.0)
+        color = random.choice(spec["colors"]) if spec["colors"] else None
+        if spec["shape"] == "heart":
+            self.spawn("heart")
+            return
+        if spec.get("fall"):
+            ox, oy = WIN_W / 2 + random.uniform(-45, 45), self.body_top() - self.hop - random.uniform(10, 30)
+            item = self.cv.create_rectangle(ox, oy, ox + 4, oy + 4, fill=color, width=0)
+            self.particles.append({"item": item, "x": ox, "y": oy, "vx": random.uniform(-12, 12), "t": now,
+                                   "life": 1.4, "kind": "flake"})
+            return
+        ox = WIN_W / 2 + random.uniform(-36, 36)
+        oy = self.body_top() - self.hop + random.uniform(4, 40)
+        if spec["shape"] == "text":
+            item = self.cv.create_text(ox, oy, text=random.choice(spec["text"]), fill=color,
+                                       font=("Segoe UI", random.choice((9, 11, 12)), "bold"))
+            kind = "aura"
+        elif spec["shape"] == "ring":
+            item = self.cv.create_oval(ox, oy, ox + 4, oy + 4, outline=color, width=1)
+            kind = "spark"
+        elif spec["shape"] == "oval":
+            item = self.cv.create_oval(ox, oy, ox + 4, oy + 4, fill=color, width=0)
+            kind = "spark"
+        else:
+            item = self.cv.create_rectangle(ox, oy, ox + 4, oy + 4, fill=color, width=0)
+            kind = "spark"
+        self.cv.tag_lower(item, self.pet_item)  # за Клодиком, чтобы не мельтешило по лицу
+        self.particles.append({"item": item, "x": ox, "y": oy, "vx": random.uniform(-20, 20), "t": now,
+                               "life": random.uniform(0.9, 1.5), "kind": kind})
 
     def jump(self, v=400):
         self.hop_v = v
@@ -1390,6 +1397,7 @@ class Clawd:
         for a in ach_list():
             if a["done"] or a["value"] < a["goal"] or a["id"] in have:
                 continue
+            before = {k for k in W.ITEMS if item_open(k)}
             cfg = clawd_agent.load_config()
             cfg["ach"] = sorted(set(cfg.get("ach", [])) | {a["id"]})
             clawd_agent.save_config(cfg)
@@ -1398,7 +1406,10 @@ class Clawd:
             self.jump(620)
             for _ in range(5):
                 self.spawn("spark")
-            self.say(f"🏆 {a['title']}!" + (f" Открыт окрас «{a['reward']}»" if a["reward"] else ""), 5)
+            new = [W.ITEMS[k]["name"] for k in W.ITEMS if item_open(k) and k not in before]
+            gifts = ([f"окрас «{a['reward']}»"] if a["reward"] else []) + [f"«{n}»" for n in new[:2]]
+            more = f" и ещё {len(new) - 2}" if len(new) > 2 else ""
+            self.say(f"🏆 {a['title']}!" + (" Открыто: " + ", ".join(gifts) + more if gifts else ""), 5)
             break  # по одной за раз, чтобы каждую было видно
 
     def apply_look(self):
@@ -2245,24 +2256,26 @@ class Clawd:
     # ---------- одежда, погода, ночь ----------
 
     def outfit(self):
-        """Что на Clawd сейчас: выбранный аксессуар + зонт/шарф по погоде + колпак ночью."""
-        out = []
+        """Что на Clawd сейчас: гардероб + зонт/шарф по погоде + колпак ночью (они важнее выбранного)."""
         kind = (self.weather or {}).get("kind") if CFG["weather"] else None
         head = "umbrella" if kind in ("rain", "storm") else ("nightcap" if CFG["night"] and self.is_night() else None)
         if time.monotonic() < self.sun_until:
             return tuple(x for x in (head if head != "nightcap" else None, "glasses") if x)  # загорает в очках
-        acc = CFG.get("acc", "")
-        if head is None and CFG["season"] and clawd_extras.season() == "newyear" and acc not in HEAD_ACC:
+        done = ach_done()
+        wear = {}
+        for slot in W.SLOT_KEYS:
+            key = CFG.get(slot) or ""
+            if slot != "aura" and W.ITEMS.get(key, {}).get("slot") == slot and item_open(key, done):
+                wear[slot] = key
+        if head is None and CFG["season"] and clawd_extras.season() == "newyear" and "head" not in wear:
             head = "santa"
-        if self.in_call:
-            acc = "phones"  # в созвоне — в наушниках
-        if acc and (acc_open(acc) or self.in_call) and (head is None or acc not in HEAD_ACC):
-            out.append(acc)
         if head:
-            out.append(head)
+            wear["head"] = head
+        if self.in_call:
+            wear["head"] = "phones"  # в созвоне — в наушниках
         if kind in ("snow", "cold"):
-            out.append("scarf")
-        return tuple(out)
+            wear["neck"] = "scarf"
+        return tuple(wear[s] for s in W.SLOT_KEYS if s in wear)
 
     @staticmethod
     def is_night():
@@ -3281,6 +3294,7 @@ class Clawd:
         if self.portal or self.portal_s:
             self.draw_portal(now)
 
+        self.aura_tick(now)
         alive = []
         for p in self.particles:
             age = (now - p["t"]) / p["life"]
@@ -3360,9 +3374,13 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/config":
             cfg = {k: v for k, v in CFG.items() if k != "ai_key"}
             cfg["has_key"] = bool(str(CFG.get("ai_key", "")).strip())
-            titles = {a: t for a, _, t, *_ in ACHIEVEMENTS}
-            cfg["colors"] = [{"name": n, "body": b, "eye": e, "locked": not color_open(i),
-                              "need": titles.get(COLOR_ACH.get(i), "")} for i, (n, b, e) in enumerate(COLORS)]
+            done = ach_done()
+            cfg["colors"] = [{"name": n, "body": b, "eye": e, "locked": not color_open(i, done),
+                              "need": need_text(color_need(i))} for i, (n, b, e) in enumerate(COLORS)]
+            cfg["wardrobe"] = W.for_ui()
+            for it in cfg["wardrobe"]["items"]:
+                it["need_text"] = need_text(it["need"])
+            cfg["open"] = sorted(k for k in W.ITEMS if item_open(k, done))
             cfg["autostart"] = os.path.exists(STARTUP_LNK)
             cfg["providers"] = clawd_agent.PROVIDERS
             cfg["default_models"] = clawd_agent.DEFAULT_MODELS
@@ -3377,9 +3395,8 @@ class Handler(BaseHTTPRequestHandler):
                                    "poops": len(pet.poops) if pet else 0,
                                    "phone_ok": bool(pet and time.time() - pet.phone_ok < 150),
                                    "weather": (pet.weather or {}).get("text", "") if pet else "",
-                                   "accs": [{"key": k, "name": n, "open": acc_open(k),
-                                             "need": next((t for a, _, t, *_ in ACHIEVEMENTS if a == need), "")}
-                                            for k, n, need in ACCESSORIES]})
+                                   "open": sorted(k for k in W.ITEMS if item_open(k)),
+                                   "colors_open": [i for i in range(len(COLORS)) if color_open(i)]})
         return self.send(404, {"error": "not found"})
 
     def do_POST(self):
@@ -3400,8 +3417,16 @@ class Handler(BaseHTTPRequestHandler):
             for k, v in data.items():
                 if k == "color" and isinstance(v, int) and not color_open(v):
                     continue  # закрытый окрас — сначала ачивка
-                if k == "acc" and v and not acc_open(str(v)):
-                    continue
+                if k in W.SLOT_KEYS:
+                    it = W.ITEMS.get(str(v))
+                    if v and (not it or it["slot"] != k or it["auto"] or not item_open(it["key"])):
+                        continue  # чужой слот или закрытая вещь
+                    cfg["acc"] = ""  # старый одиночный аксессуар больше не нужен
+                    if v:
+                        # «Модник»: сколько разных вещей примерил
+                        tried = set(cfg.get("tried", [])) | {v}
+                        cfg["tried"] = sorted(tried)
+                        cfg.setdefault("stats", {})["tried"] = len(tried)
                 if k in DEFAULTS and isinstance(v, type(DEFAULTS[k])):
                     cfg[k] = v.strip()[:2000] if isinstance(v, str) else v
             clawd_agent.save_config(cfg)
